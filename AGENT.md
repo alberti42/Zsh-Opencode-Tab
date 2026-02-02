@@ -27,12 +27,20 @@ This repo contains an Oh-My-Zsh plugin that turns a natural-language request int
 ## Opencode Integration
 
 - Uses `opencode run --format json` (NDJSON events) so we can parse a `sessionID`.
-- Default backend attaches to `http://localhost:4096` to avoid cold start.
+- Default backend/attach is empty (cold-start per request).
 - Configurable: `agent` (default `shell_cmd_generator`), optional `variant`, `title` (default `zsh shell assistant`), log level mapping.
 - Disposable sessions: optional `DELETE /session/<id>` after collecting output.
 
 - `OPENCODE_CONFIG_DIR` is set for the opencode subprocess (default: `${plugin_dir}/opencode`).
 - Default agent is `shell_cmd_generator` (loaded from `OPENCODE_CONFIG_DIR/agents/shell_cmd_generator.md`).
+
+### Cold Start vs Attach Mode
+
+- Default (safe): do not attach; each TAB request starts opencode as needed and uses `OPENCODE_CONFIG_DIR=${plugin_dir}/opencode`, so the bundled agent works out of the box.
+- Optional (fast): attach to a running opencode server to avoid warmup overhead.
+  - Current upstream limitation: `opencode run --attach ... --agent ...` is broken upstream, so attach mode cannot reliably select an agent until that PR lands.
+  - Track: https://github.com/anomalyco/opencode/pull/11812
+  - When attach mode becomes usable: the agent must be available to the server at server start time (agents are not hot-loadable later), so users must install `shell_cmd_generator` (or their chosen `Z_OC_TAB_OPENCODE_AGENT`) where the server can find it.
 
 ### Worker -> Zsh Output Protocol
 
@@ -71,12 +79,12 @@ GNU=...
 - Dot-based function naming is used (zsh supports dots) for module grouping.
 - Underscore wrappers exist for backward compatibility; planned removal later.
 - Spinner module stays render-only; controller owns worker lifecycle, pacing, Ctrl-C handling.
+- The TAB dispatcher `_zsh_opencode_tab_or_fallback` must not use `emulate -LR` or change shell options; it must behave like a transparent passthrough for third-party completion widgets (e.g. fzf-tab).
 
 ## What To Verify Next
 
 1) Remove/replace `long_command.sh` after confirming it's unused.
 2) End-to-end ZLE test:
-   - Start opencode server (`http://localhost:4096`).
    - In interactive zsh, type `# list all files larger than 100MB` then press TAB.
    - Confirm spinner runs and `BUFFER` is replaced with generated command.
    - Confirm normal TAB completion still works for non-`#` lines.

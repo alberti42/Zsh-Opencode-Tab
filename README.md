@@ -6,7 +6,7 @@ This is an Oh My Zsh plugin that:
 
 - Keeps your normal TAB completion.
 - When your current command line starts with `#` (a comment), it treats that line as a request to an AI agent.
-- Calls `opencode run --format json` (attached to a running server).
+- Calls `opencode run --format json`.
 - Inserts the generated shell command(s) back into your ZLE buffer (it does not execute them).
 
 ## Requirements
@@ -14,7 +14,7 @@ This is an Oh My Zsh plugin that:
 - zsh >= 5.1 (uses `EPOCHREALTIME`)
 - `python3`
 - `opencode` CLI in `PATH`
-- An opencode server running (default: `http://localhost:4096`)
+- (Optional) an opencode server running for attach/warm-start mode
 
 ## Installation (Oh My Zsh)
 
@@ -53,6 +53,34 @@ Notes:
 - If the line does not start with `#`, TAB behaves as usual (your original widget is preserved).
 - The leading `#` (and surrounding whitespace) is stripped before sending the request to the agent.
 
+## Mini Demo (Examples)
+
+Type each request line (starting with `#`) and press TAB. The plugin inserts the generated command into your prompt; it does not execute it.
+
+Example: list commits in a SHA range (in chronological order):
+
+```zsh
+# give me the git command to list in reverse order using rev-list the commits between 869b1373 and f1b8edd0
+```
+
+Generated command:
+
+```zsh
+git rev-list --reverse 869b1373..f1b8edd0
+```
+
+Example: iterate over `fd` results and print resolved paths:
+
+```zsh
+# give me a for-loop command to iterate over the result of `fd -e zsh`; as a dummy action, we print the full resolved path of these files.
+```
+
+Generated command:
+
+```zsh
+for file in $(fd -e zsh); do print "$(realpath "$file")"; done
+```
+
 ## How It Works
 
 - ZLE widget: intercepts TAB and triggers only on `# ...` lines.
@@ -74,8 +102,11 @@ To change them, update your `.zshrc` and reload your shell (`exec zsh`).
 ### Common Settings
 
 ```zsh
-# Where to attach (reuse server; avoids cold-start per request)
-export Z_OC_TAB_OPENCODE_ATTACH='http://localhost:4096'
+# Optional: attach to a running opencode server (warm-start)
+# NOTE: upstream currently does not support using --attach and --agent together.
+# Track: https://github.com/anomalyco/opencode/pull/11812
+# Until that is fixed, keep this empty (default) or you may not be able to select the agent.
+export Z_OC_TAB_OPENCODE_ATTACH=''
 
 # Speed (seconds per frame)
 export Z_OC_TAB_SPINNER_INTERVAL='0.03'
@@ -124,8 +155,8 @@ The plugin reads these environment variables at load time:
 
 #### Opencode
 
-- `Z_OC_TAB_OPENCODE_ATTACH` (default: `http://localhost:4096`)
-  - Attach to an existing server.
+- `Z_OC_TAB_OPENCODE_ATTACH` (default: empty)
+  - Attach to an existing server (warm-start). See notes below.
 - `Z_OC_TAB_OPENCODE_MODEL` (default: empty)
   - Model in `provider/model` form.
 - `Z_OC_TAB_OPENCODE_AGENT` (default: `shell_cmd_generator`)
@@ -165,15 +196,35 @@ GNU=...
 </user>
 ```
 
+## Cold Start vs Attach Mode
+
+- Default (safe): do not attach; each TAB request uses the bundled agent via `OPENCODE_CONFIG_DIR=${plugin_dir}/opencode`.
+- Optional (fast): attach to a running opencode server to avoid warmup overhead.
+  - Current upstream limitation: `opencode run --attach ... --agent ...` is broken upstream, so attach mode cannot reliably select an agent until that PR lands.
+  - Track: https://github.com/anomalyco/opencode/pull/11812
+  - Once fixed: the agent must be available to the server at server start time (agents are not hot-loadable later).
+
 ## Troubleshooting
 
 - Nothing happens on TAB:
   - The plugin only triggers when the line starts with `#`.
 - The spinner runs but the buffer does not change:
   - Ensure `opencode` is in `PATH`.
-  - Ensure the opencode server is running at `Z_OC_TAB_OPENCODE_ATTACH`.
+  - If using attach mode, ensure the opencode server is running at `Z_OC_TAB_OPENCODE_ATTACH`.
   - Temporarily set `Z_OC_TAB_OPENCODE_LOG_LEVEL=DEBUG` and `Z_OC_TAB_OPENCODE_PRINT_LOGS=1`.
+
+## Credits
+
+Idea inspired by `https://github.com/verlihirsh/zsh-opencode-plugin`. This plugin, `zsh-opencode-tab`, goes beyond the initial idea by providing:
+
+- Real agent support: a dedicated `shell_cmd_generator` agent with a well-crafted prompt format; you can override the agent name and point to your own opencode config.
+- Two operating modes: safe default cold-start (works out of the box) plus an optional attach-to-server mode for warm-start performance (documented with current upstream limitations).
+- Better UX: a polished "Knight Rider" progress bar animation while the agent works.
+- Plays nicely with your shell: keeps normal TAB completion and works with other TAB-binding plugins (e.g. fzf-tab).
+- Clean session hygiene: supports disposable sessions and auto-cleans them so you don't accumulate hundreds of useless sessions.
+- Fully configurable: customize animation look (colors/background/behavior) and opencode options (model/variant/logging/config dir, etc.) via `Z_OC_TAB_*` variables.
+- Solid engineering: fast lazy loading, clear namespacing for variables, and a robust worker/IPC design so the UI stays responsive.
 
 ## License
 
-MIT (see `LICENSE`).
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
