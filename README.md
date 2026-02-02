@@ -223,6 +223,13 @@ Idea inspired by `https://github.com/verlihirsh/zsh-opencode-plugin`. This plugi
 - Fully configurable: customize animation look (colors/background/behavior) and opencode options (model/variant/logging/config dir, etc.) via `Z_OC_TAB_*` variables.
 - Solid engineering: fast lazy loading, clear namespacing for variables, and a robust worker/IPC design so the UI stays responsive.
 
+## Author
+- **Author:** Andrea Alberti
+- **GitHub Profile:** [alberti42](https://github.com/alberti42)
+- **Donations:** [![Buy Me a Coffee](https://img.shields.io/badge/Donate-Buy%20Me%20a%20Coffee-orange)](https://buymeacoffee.com/alberti)
+
+Feel free to contribute to the development of this plugin or report any issues in the [GitHub repository](https://github.com/alberti42/Zsh-Opencode-Tab/issues).
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
