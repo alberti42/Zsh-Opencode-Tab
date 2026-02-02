@@ -1,322 +1,509 @@
-#!/usr/bin/env zsh
+#!/hint/zsh
 
 # Copyright (c) 2026, Andrea Alberti (MIT license)
 
-# ZLE Spinner Controller (single-process UI loop)
+# ZLE Knight Rider Spinner (rendering only)
 #
-# Design:
-# - Keep control inside a single ZLE widget.
-# - Run the long command in a separate process.
-# - Update the editor line (BUFFER/POSTDISPLAY) in a tight loop until the
-#   command finishes.
+# This file intentionally contains *no* process control logic.
+# The controller owns:
+# - starting/stopping the background process
+# - reading the status FIFO
+# - Ctrl-C handling + escalation
+# - pacing (frame deadlines)
+#
+# This file provides:
+# - init (cursor hide + palette precompute)
+# - draw one frame
+# - cleanup (cursor restore + clear ZLE line)
 
+## Configuration
+# This module renders only.
+# All user-facing configuration lives in `_zsh_opencode_tab[...]` and is resolved
+# when the plugin is loaded (see `zsh-opencode-tab.plugin.zsh`).
 
-_zsh_opencode_tab_spin_render() {
+function _zsh_opencode_tab.spinner.total_frames() {
   emulate -L zsh
-  local frame="$1"
-  local text="$2"
-  local render_mode="$3"
 
-  if [[ -n $_spin_message ]]; then
-    text="${frame} ${_spin_message}"
-  else
-    text="${frame}"
-  fi
+  local -i viewLen=${1:-${_zsh_opencode_tab[spinner.viewLen]}}
+  local -i padR=${2:-${_zsh_opencode_tab[spinner.padR]}}
+  local -i padL=${3:-${_zsh_opencode_tab[spinner.padL]}}
 
-  case "$_spin_render_mode" in
-    postdisplay)
-      BUFFER=""
-      CURSOR=0
-      POSTDISPLAY="${text}"
-      ;;
-    buffer|*)
-      POSTDISPLAY=""
-      BUFFER="$text"
-      CURSOR=${#BUFFER}
-      ;;
+  # forward(viewLen) + holdEnd(padR) + backward(viewLen-1) + holdStart(padL)
+  REPLY=$(( viewLen + padR + (viewLen - 1) + padL ))
+}
+
+function _zsh_opencode_tab.spinner.__hsv_to_hex() {
+  emulate -L zsh
+
+  # Convert HSV (h in degrees, s/v in 0..1) to a '#RRGGBB' hex string.
+  # Output is placed in REPLY.
+
+  local -F h=$1
+  local -F s=$2
+  local -F v=$3
+
+  (( h = h % 360.0 ))
+  (( h < 0.0 )) && (( h += 360.0 ))
+
+  local -F c x m hprime h2 hmod t
+  local -F r1 g1 b1
+  local -F r g b
+  local -i sector
+
+  (( c = v * s ))
+  (( hprime = h / 60.0 ))
+  (( sector = hprime ))
+  (( h2 = hprime / 2.0 ))
+  local -i k=$h2
+  (( hmod = hprime - 2.0 * k ))
+  (( t = hmod - 1.0 ))
+  (( t < 0.0 )) && (( t = -t ))
+  (( x = c * (1.0 - t) ))
+  (( m = v - c ))
+
+  case $sector in
+    0) r1=$c; g1=$x; b1=0.0 ;;
+    1) r1=$x; g1=$c; b1=0.0 ;;
+    2) r1=0.0; g1=$c; b1=$x ;;
+    3) r1=0.0; g1=$x; b1=$c ;;
+    4) r1=$x; g1=0.0; b1=$c ;;
+    *) r1=$c; g1=0.0; b1=$x ;;
   esac
 
-  # Avoid prompt-framework specifics; just ask ZLE to redraw.
+  (( r = (r1 + m) * 255.0 ))
+  (( g = (g1 + m) * 255.0 ))
+  (( b = (b1 + m) * 255.0 ))
+
+  local -i ri=$(( r + 0.5 ))
+  local -i gi=$(( g + 0.5 ))
+  local -i bi=$(( b + 0.5 ))
+
+  printf -v REPLY '#%02X%02X%02X' $ri $gi $bi
+}
+
+function _zsh_opencode_tab.spinner.__hsv_to_rgb() {
+  emulate -L zsh
+
+  # Convert HSV to RGB floats in 0..1.
+  # Output is placed in the array `reply=(r g b)`.
+
+  local -F h=$1
+  local -F s=$2
+  local -F v=$3
+
+  (( h = h % 360.0 ))
+  (( h < 0.0 )) && (( h += 360.0 ))
+
+  local -F c x m hprime h2 hmod t
+  local -F r1 g1 b1
+  local -F r g b
+  local -i sector
+
+  (( c = v * s ))
+  (( hprime = h / 60.0 ))
+  (( sector = hprime ))
+  (( h2 = hprime / 2.0 ))
+  local -i k=$h2
+  (( hmod = hprime - 2.0 * k ))
+  (( t = hmod - 1.0 ))
+  (( t < 0.0 )) && (( t = -t ))
+  (( x = c * (1.0 - t) ))
+  (( m = v - c ))
+
+  case $sector in
+    0) r1=$c; g1=$x; b1=0.0 ;;
+    1) r1=$x; g1=$c; b1=0.0 ;;
+    2) r1=0.0; g1=$c; b1=$x ;;
+    3) r1=0.0; g1=$x; b1=$c ;;
+    4) r1=$x; g1=0.0; b1=$c ;;
+    *) r1=$c; g1=0.0; b1=$x ;;
+  esac
+
+  (( r = r1 + m ))
+  (( g = g1 + m ))
+  (( b = b1 + m ))
+
+  reply=($r $g $b)
+}
+
+function _zsh_opencode_tab.spinner.__rgb_to_hex() {
+  emulate -L zsh
+
+  # Convert RGB floats (0..1) to '#RRGGBB'.
+  # Values are clamped before conversion.
+  # Output is placed in REPLY.
+
+  local -F r=$1
+  local -F g=$2
+  local -F b=$3
+
+  (( r < 0.0 )) && r=0.0
+  (( g < 0.0 )) && g=0.0
+  (( b < 0.0 )) && b=0.0
+  (( r > 1.0 )) && r=1.0
+  (( g > 1.0 )) && g=1.0
+  (( b > 1.0 )) && b=1.0
+
+  local -i ri=$(( r * 255.0 + 0.5 ))
+  local -i gi=$(( g * 255.0 + 0.5 ))
+  local -i bi=$(( b * 255.0 + 0.5 ))
+
+  printf -v REPLY '#%02X%02X%02X' $ri $gi $bi
+}
+
+# Global state (computed once per run, then updated per frame):
+# - _zsh_opencode_tab_spinner_trail_palette: list of pre-blended hex colors for trail steps
+# - _zsh_opencode_tab_spinner_inactive_fg: pre-blended hex color for inactive dots (changes with fade)
+# - _zsh_opencode_tab_spinner_base_*: base color in linear-ish RGB floats
+# - _zsh_opencode_tab_spinner_bg_*: background RGB floats derived from _zsh_opencode_tab_spinner_bg_hex
+function _zsh_opencode_tab.spinner.__hex_to_rgb() {
+  emulate -L zsh
+
+  # Convert '#RRGGBB' (or 'RRGGBB') to RGB floats in 0..1.
+  # Output is placed in `reply=(r g b)`.
+
+  local hex=${1#\#}
+  local -i r=$(( 16#${hex[1,2]} ))
+  local -i g=$(( 16#${hex[3,4]} ))
+  local -i b=$(( 16#${hex[5,6]} ))
+
+  reply=($(( r / 255.0 )) $(( g / 255.0 )) $(( b / 255.0 )))
+}
+
+function _zsh_opencode_tab.spinner.__set_bg() {
+  emulate -L zsh
+
+  _zsh_opencode_tab.spinner.__hex_to_rgb ${_zsh_opencode_tab[spinner.bg_hex]}
+  _zsh_opencode_tab[spinner.state.bg_r]=${reply[1]}
+  _zsh_opencode_tab[spinner.state.bg_g]=${reply[2]}
+  _zsh_opencode_tab[spinner.state.bg_b]=${reply[3]}
+}
+
+function _zsh_opencode_tab.spinner.__set_inactive_fg() {
+  emulate -L zsh
+
+  # Compute the inactive dot foreground color for this frame.
+  #
+  # Upstream uses alpha on an RGBA color. Terminals do not have alpha, so we
+  # approximate by blending with the configured background:
+  #   final = alpha * base + (1 - alpha) * bg
+  # where:
+  #   alpha = _zsh_opencode_tab_spinner_inactive_factor * fadeFactor
+
+  local -F fadeFactor=$1
+
+  local -F base_r=${_zsh_opencode_tab[spinner.state.base_r]}
+  local -F base_g=${_zsh_opencode_tab[spinner.state.base_g]}
+  local -F base_b=${_zsh_opencode_tab[spinner.state.base_b]}
+  local -F bg_r=${_zsh_opencode_tab[spinner.state.bg_r]}
+  local -F bg_g=${_zsh_opencode_tab[spinner.state.bg_g]}
+  local -F bg_b=${_zsh_opencode_tab[spinner.state.bg_b]}
+  local -F inactive_factor=${_zsh_opencode_tab[spinner.inactive_factor]}
+
+  local -F alpha=$(( inactive_factor * fadeFactor ))
+  local -F inv=$(( 1.0 - alpha ))
+  local -F r=$(( base_r * alpha + bg_r * inv ))
+  local -F g=$(( base_g * alpha + bg_g * inv ))
+  local -F b=$(( base_b * alpha + bg_b * inv ))
+
+  _zsh_opencode_tab.spinner.__rgb_to_hex $r $g $b
+  _zsh_opencode_tab[spinner.state.inactive_fg]=$REPLY
+}
+
+function _zsh_opencode_tab.spinner.__derive_trail_palette() {
+  emulate -L zsh
+
+  # Derive the trail palette from a single base HSV color.
+  # This ports the `deriveTrailColors` logic from spinner.ts.
+  #
+  # Trail steps (i = 0..trailLen-1):
+  # - i==0: alpha=1.0, brightness=1.0 (head)
+  # - i==1: alpha=0.9, brightness=1.15 (glare / bloom)
+  # - i>=2: alpha=0.65^(i-1), brightness=1.0 (exponential fade)
+  #
+  # Each step is pre-blended against _zsh_opencode_tab_spinner_bg_hex (RGBA -> RGB on bg).
+
+  local -i trailLen=$1
+
+  _zsh_opencode_tab.spinner.__set_bg
+
+  local -F hue=${_zsh_opencode_tab[spinner.hue]}
+  local -F sat=${_zsh_opencode_tab[spinner.saturation]}
+  local -F val=${_zsh_opencode_tab[spinner.value]}
+  _zsh_opencode_tab.spinner.__hsv_to_rgb $hue $sat $val
+  local -F baseR=${reply[1]}
+  local -F baseG=${reply[2]}
+  local -F baseB=${reply[3]}
+
+  _zsh_opencode_tab[spinner.state.base_r]=$baseR
+  _zsh_opencode_tab[spinner.state.base_g]=$baseG
+  _zsh_opencode_tab[spinner.state.base_b]=$baseB
+
+  local -F bg_r=${_zsh_opencode_tab[spinner.state.bg_r]}
+  local -F bg_g=${_zsh_opencode_tab[spinner.state.bg_g]}
+  local -F bg_b=${_zsh_opencode_tab[spinner.state.bg_b]}
+
+  local -F r g b alpha bright
+  local -F inv
+  local -i i
+
+  local -a palette
+  palette=()
+  for (( i = 0; i < trailLen; i++ )); do
+    if (( i == 0 )); then
+      alpha=1.0
+      bright=1.0
+    elif (( i == 1 )); then
+      alpha=0.9
+      bright=1.15
+    else
+      alpha=$(( 0.65 ** (i - 1) ))
+      bright=1.0
+    fi
+
+    (( r = baseR * bright ))
+    (( g = baseG * bright ))
+    (( b = baseB * bright ))
+    (( r > 1.0 )) && r=1.0
+    (( g > 1.0 )) && g=1.0
+    (( b > 1.0 )) && b=1.0
+
+    (( inv = 1.0 - alpha ))
+    (( r = r * alpha + bg_r * inv ))
+    (( g = g * alpha + bg_g * inv ))
+    (( b = b * alpha + bg_b * inv ))
+
+    _zsh_opencode_tab.spinner.__rgb_to_hex $r $g $b
+    palette+=($REPLY)
+  done
+
+  _zsh_opencode_tab.spinner.__set_inactive_fg 1.0
+
+_zsh_opencode_tab[spinner.state.trail_palette]="${(j: :)palette}"
+}
+
+# Backwards-compatible wrappers.
+_zsh_opencode_tab_spinner_total_frames() { _zsh_opencode_tab.spinner.total_frames "$@" }
+_zsh_opencode_tab_spinner_init() { _zsh_opencode_tab.spinner.init "$@" }
+_zsh_opencode_tab_spinner_draw_frame() { _zsh_opencode_tab.spinner.draw_frame "$@" }
+_zsh_opencode_tab_spinner_cleanup() { _zsh_opencode_tab.spinner.cleanup "$@" }
+
+function _zsh_opencode_tab.spinner.__train_frame() {
+  emulate -L zsh
+
+  # Render one frame of the bar.
+  #
+  # Inputs:
+  # - padL/padR/viewLen: define a larger "world" and the visible window
+  # - activePos: scanner head position in world coordinates (1-based)
+  # - dir: +1 when moving forward, -1 when moving backward
+  # - isHolding/holdProgress: used to "retract" the trail during holds
+  #
+  # Outputs:
+  # - REPLY: full string to put into BUFFER (includes brackets and message)
+  # - reply: array of region_highlight spans for this frame
+
+  local -i padL=$1
+  local -i padR=$2
+  local -i trailLen=$3
+  local -i viewLen=$4
+  local -i activePos=$5
+  local -i dir=$6
+  local -i isHolding=$7
+  local -i holdProgress=$8
+
+  local -i viewStart=$(( padL + 1 ))
+  local -i viewEnd=$(( padL + viewLen ))
+
+  local dot_char=${_zsh_opencode_tab[spinner.dot_char]}
+  local train_char=${_zsh_opencode_tab[spinner.train_char]}
+  local barBg=${_zsh_opencode_tab[spinner.bg_hex]}
+  local msg=${_zsh_opencode_tab[spinner.message]}
+  local msgFg=${_zsh_opencode_tab[spinner.message_fg]}
+
+  local -a trail_palette
+  trail_palette=( ${=_zsh_opencode_tab[spinner.state.trail_palette]} )
+  local inactive_fg=${_zsh_opencode_tab[spinner.state.inactive_fg]}
+
+  # The visible interior is built as plain text first (dots), then some
+  # positions are replaced with the active block character.
+
+  local view="${(l:$viewLen:: :)""}"
+  view=${view// /${dot_char}}
+
+  local bracketFg=${trail_palette[2]:-${trail_palette[1]}}
+  local -i barLen=$(( viewLen + 2 ))
+
+  # We highlight the bar in three layers:
+  # 1) brackets (`[` and `]`) with a bright color (use the "glare" if available)
+  # 2) baseline for the interior dots
+  # 3) per-cell overrides for active trail blocks
+  #
+  # region_highlight format is:
+  #   "start end style"
+  # where start/end are 0-based, end is exclusive, and style is a comma-
+  # separated list like "fg=#RRGGBB,bg=#RRGGBB".
+
+  # Buffer is: [<viewLen chars>]
+  reply=(
+    "0 1 fg=${bracketFg},bg=${barBg}"
+    "$(( viewLen + 1 )) $(( viewLen + 2 )) fg=${bracketFg},bg=${barBg}"
+    "1 $(( viewLen + 1 )) fg=${inactive_fg},bg=${barBg}"
+  )
+
+  local -i p
+  for (( p = viewStart; p <= viewEnd; p++ )); do
+    # Directional distance behind the head:
+    # - moving forward: trail is to the left  => dist = activePos - p
+    # - moving backward: trail is to the right => dist = p - activePos
+    local -i dist
+    if (( dir > 0 )); then
+      dist=$(( activePos - p ))
+    else
+      dist=$(( p - activePos ))
+    fi
+
+    # Trail palette index.
+    # During holds, we shift the index by holdProgress so the trail appears to
+    # fade/retract even though the head is stationary (matches spinner.ts).
+    local -i idx=$dist
+    if (( isHolding )); then
+      idx=$(( idx + holdProgress ))
+    fi
+
+    # idx==0 is the bright head color. idx>0 are tail colors.
+    if (( idx >= 0 && idx < trailLen )); then
+      local -i viewIdx=$(( p - padL ))
+      view[$viewIdx]=${train_char}
+      reply+=( "$viewIdx $(( viewIdx + 1 )) fg=${trail_palette[$(( idx + 1 ))]},bg=${barBg}" )
+    fi
+  done
+
+  if [[ -n $msg ]]; then
+    # Message is not part of the bar background by default.
+    # Apply a message fg color only if configured.
+    REPLY="[${view}] ${msg}"
+    if [[ -n $msgFg ]]; then
+      reply+=( "${barLen} ${#REPLY} fg=${msgFg}" )
+    fi
+  else
+    REPLY="[${view}]"
+  fi
+}
+
+_zsh_opencode_tab.spinner.init() {
+  emulate -L zsh
+
+  # Precompute palette and background blending state.
+  _zsh_opencode_tab.spinner.__derive_trail_palette ${_zsh_opencode_tab[spinner.trailLen]}
+
+  # Hide cursor while animating.
+  if (( ${+terminfo[civis]} )); then
+    print -n -- $terminfo[civis]
+  else
+    print -n -- $'\e[?25l'
+  fi
+}
+
+_zsh_opencode_tab.spinner.draw_frame() {
+  emulate -L zsh
+
+  # Draw a single frame given a monotonically increasing frame counter.
+  # The modulo by totalFrames creates a repeating cycle.
+  local -i frameCount=$1
+
+  local -i padL=${_zsh_opencode_tab[spinner.padL]}
+  local -i padR=${_zsh_opencode_tab[spinner.padR]}
+  local -i viewLen=${_zsh_opencode_tab[spinner.viewLen]}
+  local -i trailLen=${_zsh_opencode_tab[spinner.trailLen]}
+
+  _zsh_opencode_tab.spinner.total_frames $viewLen $padR $padL
+  local -i totalFrames=$REPLY
+
+  local -i frameIndex=$(( frameCount % totalFrames ))
+  local -i activePos dir
+  local -i isHolding holdProgress holdTotal
+  local -i movementProgress movementTotal
+  local -F progress fadeFactor
+
+  if (( frameIndex < viewLen )); then
+    # Moving forward
+    activePos=$(( padL + 1 + frameIndex ))
+    dir=1
+    isHolding=0
+    holdProgress=0
+    holdTotal=0
+    movementProgress=$frameIndex
+    movementTotal=$viewLen
+  elif (( frameIndex < viewLen + padR )); then
+    # Holding at end
+    activePos=$(( padL + viewLen ))
+    dir=1
+    isHolding=1
+    holdProgress=$(( frameIndex - viewLen ))
+    holdTotal=$padR
+    movementProgress=0
+    movementTotal=0
+  elif (( frameIndex < viewLen + padR + (viewLen - 1) )); then
+    # Moving backward
+    local -i backwardIndex=$(( frameIndex - viewLen - padR ))
+    activePos=$(( padL + viewLen - 1 - backwardIndex ))
+    dir=-1
+    isHolding=0
+    holdProgress=0
+    holdTotal=0
+    movementProgress=$backwardIndex
+    movementTotal=$(( viewLen - 1 ))
+  else
+    # Holding at start
+    activePos=$(( padL + 1 ))
+    dir=-1
+    isHolding=1
+    holdProgress=$(( frameIndex - viewLen - padR - (viewLen - 1) ))
+    holdTotal=$padL
+    movementProgress=0
+    movementTotal=0
+  fi
+
+  # Global fade for inactive dots.
+  fadeFactor=1.0
+  if (( ${_zsh_opencode_tab[spinner.enable_fading]} )); then
+    if (( isHolding )) && (( holdTotal > 0 )); then
+      progress=$(( holdProgress / (holdTotal * 1.0) ))
+      local -F min_alpha=${_zsh_opencode_tab[spinner.min_alpha]}
+      fadeFactor=$(( 1.0 - progress * (1.0 - min_alpha) ))
+      (( fadeFactor < min_alpha )) && fadeFactor=$min_alpha
+    elif (( ! isHolding )) && (( movementTotal > 0 )); then
+      progress=$(( movementProgress / ((movementTotal > 1 ? (movementTotal - 1) : 1) * 1.0) ))
+      local -F min_alpha2=${_zsh_opencode_tab[spinner.min_alpha]}
+      fadeFactor=$(( min_alpha2 + progress * (1.0 - min_alpha2) ))
+    fi
+  fi
+  _zsh_opencode_tab.spinner.__set_inactive_fg $fadeFactor
+
+  # Build and render.
+  _zsh_opencode_tab.spinner.__train_frame $padL $padR $trailLen $viewLen $activePos $dir $isHolding $holdProgress
+  BUFFER="$REPLY"
+  CURSOR=0
+  POSTDISPLAY=""
+  region_highlight=("${reply[@]}")
   zle -R
 }
 
-_zsh_opencode_tab_spin_clear_line() {
+_zsh_opencode_tab.spinner.cleanup() {
   emulate -L zsh
 
-  POSTDISPLAY=""
+  # Restore cursor.
+  if (( ${+terminfo[cnorm]} )); then
+    print -n -- $terminfo[cnorm]
+  else
+    print -n -- $'\e[?25h'
+  fi
+
+  # Clear the command line.
   BUFFER=""
   CURSOR=0
-  # It flushes any pending input and resets the editor state.
-  zle -I
-  # Ummediately redraws the prompt buffer cleanly, avoiding new line otherwise caused by `zle -I``
-  zle redisplay
-  # Avoid prompt-framework specifics; just ask ZLE to redraw.
+  POSTDISPLAY=""
+  region_highlight=()
   zle -R
-}
-
-_zsh_opencode_tab_run_with_spinner() {
-  emulate -L zsh
-  setopt localoptions localtraps no_notify
-
-  if [[ -z ${ZLE-} && -z ${WIDGET-} ]]; then
-    return 1
-  fi
-
-  # Store the buffer (user command line)
-  local cmdline="$BUFFER"
-
-  # Return immediately if the buffer was empty
-  [[ -n $cmdline ]] || return 0
-  
-  local _spin_interval _spin_render_mode _spin_message _spin_type
-  local -i _spin_print_output
-  local -a _spin_frames
-
-  _spin_interval=${SPIN_INTERVAL:-0.1}
-  _spin_render_mode=${SPIN_RENDER_MODE:-postdisplay}   # buffer|postdisplay
-  _spin_message=${SPIN_MESSAGE:-AI thinking...}
-  _spin_type=${SPIN_TYPE:-growVertical}
-  _spin_print_output=${SPIN_PRINT_OUTPUT:-1}           # 0/1
-  
-  # Set the type of frames and interval based on 
-  # frames imported from `revolver` (https://github.com/molovo/revolver)
-  local -a _spin_frames
-  () {
-    local -A _revolver_spinners
-
-    _revolver_spinners[dots]='0.08 ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏'
-    _revolver_spinners[dots2]='0.08 ⣾ ⣽ ⣻ ⢿ ⡿ ⣟ ⣯ ⣷'
-    _revolver_spinners[dots3]='0.08 ⠋ ⠙ ⠚ ⠞ ⠖ ⠦ ⠴ ⠲ ⠳ ⠓'
-    _revolver_spinners[dots4]='0.08 ⠄ ⠆ ⠇ ⠋ ⠙ ⠸ ⠰ ⠠ ⠰ ⠸ ⠙ ⠋ ⠇ ⠆'
-    _revolver_spinners[dots5]='0.08 ⠋ ⠙ ⠚ ⠒ ⠂ ⠂ ⠒ ⠲ ⠴ ⠦ ⠖ ⠒ ⠐ ⠐ ⠒ ⠓ ⠋'
-    _revolver_spinners[dots6]='0.08 ⠁ ⠉ ⠙ ⠚ ⠒ ⠂ ⠂ ⠒ ⠲ ⠴ ⠤ ⠄ ⠄ ⠤ ⠴ ⠲ ⠒ ⠂ ⠂ ⠒ ⠚ ⠙ ⠉ ⠁'
-    _revolver_spinners[dots7]='0.08 ⠈ ⠉ ⠋ ⠓ ⠒ ⠐ ⠐ ⠒ ⠖ ⠦ ⠤ ⠠ ⠠ ⠤ ⠦ ⠖ ⠒ ⠐ ⠐ ⠒ ⠓ ⠋ ⠉ ⠈'
-    _revolver_spinners[dots8]='0.08 ⠁ ⠁ ⠉ ⠙ ⠚ ⠒ ⠂ ⠂ ⠒ ⠲ ⠴ ⠤ ⠄ ⠄ ⠤ ⠠ ⠠ ⠤ ⠦ ⠖ ⠒ ⠐ ⠐ ⠒ ⠓ ⠋ ⠉ ⠈ ⠈'
-    _revolver_spinners[dots9]='0.08 ⢹ ⢺ ⢼ ⣸ ⣇ ⡧ ⡗ ⡏'
-    _revolver_spinners[dots10]='0.08 ⢄ ⢂ ⢁ ⡁ ⡈ ⡐ ⡠'
-    _revolver_spinners[dots11]='0.1 ⠁ ⠂ ⠄ ⡀ ⢀ ⠠ ⠐ ⠈'
-    _revolver_spinners[dots12]='0.08 "⢀⠀" "⡀⠀" "⠄⠀" "⢂⠀" "⡂⠀" "⠅⠀" "⢃⠀" "⡃⠀" "⠍⠀" "⢋⠀" "⡋⠀" "⠍⠁" "⢋⠁" "⡋⠁" "⠍⠉" "⠋⠉" "⠋⠉" "⠉⠙" "⠉⠙" "⠉⠩" "⠈⢙" "⠈⡙" "⢈⠩" "⡀⢙" "⠄⡙" "⢂⠩" "⡂⢘" "⠅⡘" "⢃⠨" "⡃⢐" "⠍⡐" "⢋⠠" "⡋⢀" "⠍⡁" "⢋⠁" "⡋⠁" "⠍⠉" "⠋⠉" "⠋⠉" "⠉⠙" "⠉⠙" "⠉⠩" "⠈⢙" "⠈⡙" "⠈⠩" "⠀⢙" "⠀⡙" "⠀⠩" "⠀⢘" "⠀⡘" "⠀⠨" "⠀⢐" "⠀⡐" "⠀⠠" "⠀⢀" "⠀⡀"'
-    _revolver_spinners[line]='0.13 - \\ | /'
-    _revolver_spinners[line2]='0.1 ⠂ - – — – -'
-    _revolver_spinners[pipe]='0.1 ┤ ┘ ┴ └ ├ ┌ ┬ ┐'
-    _revolver_spinners[simpleDots]='0.4 ".  " ".. " "..." "   "'
-    _revolver_spinners[simpleDotsScrolling]='0.2 ".  " ".. " "..." " .." "  ." "   "'
-    _revolver_spinners[star]='0.07 ✶ ✸ ✹ ✺ ✹ ✷'
-    _revolver_spinners[star2]='0.08 + x *'
-    _revolver_spinners[flip]="0.07 _ _ _ - \` \` ' ´ - _ _ _"
-    _revolver_spinners[hamburger]='0.1 ☱ ☲ ☴'
-    _revolver_spinners[growVertical]='0.12 ▁ ▃ ▄ ▅ ▆ ▇ ▆ ▅ ▄ ▃'
-    _revolver_spinners[growHorizontal]='0.12 ▏ ▎ ▍ ▌ ▋ ▊ ▉ ▊ ▋ ▌ ▍ ▎'
-    _revolver_spinners[balloon]='0.14 " " "." "o" "O" "@" "*" " "'
-    _revolver_spinners[balloon2]='0.12 . o O ° O o .'
-    _revolver_spinners[noise]='0.14 ▓ ▒ ░'
-    _revolver_spinners[bounce]='0.1 ⠁ ⠂ ⠄ ⠂'
-    _revolver_spinners[boxBounce]='0.12 ▖ ▘ ▝ ▗'
-    _revolver_spinners[boxBounce2]='0.1 ▌ ▀ ▐ ▄'
-    _revolver_spinners[triangle]='0.05 ◢ ◣ ◤ ◥'
-    _revolver_spinners[arc]='0.1 ◜ ◠ ◝ ◞ ◡ ◟'
-    _revolver_spinners[circle]='0.12 ◡ ⊙ ◠'
-    _revolver_spinners[squareCorners]='0.18 ◰ ◳ ◲ ◱'
-    _revolver_spinners[circleQuarters]='0.12 ◴ ◷ ◶ ◵'
-    _revolver_spinners[circleHalves]='0.05 ◐ ◓ ◑ ◒'
-    _revolver_spinners[squish]='0.1 ╫ ╪'
-    _revolver_spinners[toggle]='0.25 ⊶ ⊷'
-    _revolver_spinners[toggle2]='0.08 ▫ ▪'
-    _revolver_spinners[toggle3]='0.12 □ ■'
-    _revolver_spinners[toggle4]='0.1 ■ □ ▪ ▫'
-    _revolver_spinners[toggle5]='0.1 ▮ ▯'
-    _revolver_spinners[toggle6]='0.3 ဝ ၀'
-    _revolver_spinners[toggle7]='0.08 ⦾ ⦿'
-    _revolver_spinners[toggle8]='0.1 ◍ ◌'
-    _revolver_spinners[toggle9]='0.1 ◉ ◎'
-    _revolver_spinners[toggle10]='0.1 ㊂ ㊀ ㊁'
-    _revolver_spinners[toggle11]='0.05 ⧇ ⧆'
-    _revolver_spinners[toggle12]='0.12 ☗ ☖'
-    _revolver_spinners[toggle13]='0.08 = * -'
-    _revolver_spinners[arrow]='0.1 ← ↖ ↑ ↗ → ↘ ↓ ↙'
-    _revolver_spinners[arrow2]='0.12 ▹▹▹▹▹ ▸▹▹▹▹ ▹▸▹▹▹ ▹▹▸▹▹ ▹▹▹▸▹ ▹▹▹▹▸'
-    _revolver_spinners[bouncingBar]='0.08 "[    ]" "[   =]" "[  ==]" "[ ===]" "[====]" "[=== ]" "[==  ]" "[=   ]"'
-    _revolver_spinners[bouncingBall]='0.08 "( ●    )" "(  ●   )" "(   ●  )" "(    ● )" "(     ●)" "(    ● )" "(   ●  )" "(  ●   )" "( ●    )" "(●     )"'
-    _revolver_spinners[pong]='0.08 "▐⠂       ▌" "▐⠈       ▌" "▐ ⠂      ▌" "▐ ⠠      ▌" "▐  ⡀     ▌" "▐  ⠠     ▌" "▐   ⠂    ▌" "▐   ⠈    ▌" "▐    ⠂   ▌" "▐    ⠠   ▌" "▐     ⡀  ▌" "▐     ⠠  ▌" "▐      ⠂ ▌" "▐      ⠈ ▌" "▐       ⠂▌" "▐       ⠠▌" "▐       ⡀▌" "▐      ⠠ ▌" "▐      ⠂ ▌" "▐     ⠈  ▌" "▐     ⠂  ▌" "▐    ⠠   ▌" "▐    ⡀   ▌" "▐   ⠠    ▌" "▐   ⠂    ▌" "▐  ⠈     ▌" "▐  ⠂     ▌" "▐ ⠠      ▌" "▐ ⡀      ▌" "▐⠠       ▌"'
-    _revolver_spinners[shark]='0.12 "▐|\\____________▌" "▐_|\\___________▌" "▐__|\\__________▌" "▐___|\\_________▌" "▐____|\\________▌" "▐_____|\\_______▌" "▐______|\\______▌" "▐_______|\\_____▌" "▐________|\\____▌" "▐_________|\\___▌" "▐__________|\\__▌" "▐___________|\\_▌" "▐____________|\\▌" "▐____________/|▌" "▐___________/|_▌" "▐__________/|__▌" "▐_________/|___▌" "▐________/|____▌" "▐_______/|_____▌" "▐______/|______▌" "▐_____/|_______▌" "▐____/|________▌" "▐___/|_________▌" "▐__/|__________▌" "▐_/|___________▌" "▐/|____________▌"'
-
-    if (( ! ${+_revolver_spinners[$_spin_type]} )); then
-      _spin_type='bouncingBar'
-    fi
-    
-    # The frames that, when animated, will make up
-    # our spinning indicator
-    local -a arr
-    # (@z): does lexical splitting, but it does not remove the quote
-    # (@Q): remove one level of quoting
-    arr=(${(@Q)${(@z)_revolver_spinners[$_spin_type]}})
-    # Get the interval between frames
-    _spin_interval="${arr[1]}"
-    # Get the frames
-    _spin_frames=("${arr[@]:1:-1}")  # elements 2..last 
-  }
-
-  {
-    # Use a FIFO to receive the background command's exit status.
-    # To avoid confusion: the FIFO contains **just** the exit status, nothing else.
-    local -i status_fd
-    # Capture stdout/stderr to a temp file so it doesn't corrupt ZLE.
-    local out status_fifo
-    {
-      out="$(mktemp -t zsh-opencode-tab.out.XXXXXX)"
-      status_fifo="$(mktemp -t zsh-opencode-tab.status.XXXXXX)"
-      
-      # Convert the temp file to FIFO
-      {
-        command rm -f -- "$status_fifo" 2>/dev/null
-        command mkfifo -- "$status_fifo"
-      }
-      # Open FIFO for reading, nonblocking
-      # sysopen -r -o nonblock -u status_fd "$status_fifo"
-      
-      # Important: opening a FIFO read-only blocks until a writer connects.
-      # Open it read-write so we never hang here (macOS/BSD semantics).
-      # This FIFO is opened in blocking mode on purpose so that we can later
-      # use read with timeout and we do not need to handle an extra sleep cmd.
-      exec {status_fd}<>"$status_fifo"
-    } always {
-      local ret=$?
-
-      # Only cleanup if error
-      if (( ret != 0 )); then
-        command rm -f -- "$out" "$status_fifo" 2>/dev/null
-        return $ret
-      fi
-    }
-
-    # Execute long_command in a background subshell, passing the buffer contents.
-    # Disown the job to prevent job-control noise in the interactive shell.
-    (
-      emulate -L zsh
-      setopt localoptions localtraps no_notify no_monitor
-
-      # ^C was pressed
-      TRAPINT() {
-        print -r -- 130 >"$status_fifo" 2>/dev/null
-        exit 130
-      }
-      # kill command was received
-      TRAPTERM() {
-        print -r -- 143 >"$status_fifo" 2>/dev/null
-        exit 143
-      }
-
-      # Run the process
-      ./long_command.sh "$cmdline"
-
-      local -i child_rc=$?
-      print -r -- $child_rc >"$status_fifo" 2>/dev/null
-      exit $child_rc
-    ) >"$out" 2>&1 &!
-    local -i pid=$!
-
-    local -i cancelled=0
-    local -i cancel_t0=-1 # track the elapsed time since the first TRAPINT
-    local -i cancel_sent_term=0
-    local -i cancel_sent_kill=0
-    # Relay Ctrl-C signals to the background process
-    TRAPINT() {
-      cancelled=1
-      (( cancel_t0 == -1 )) && cancel_t0=$SECONDS
-      # Interrupt the background process; a negative PID sends
-      # SIGINT to the entire process group whose PGID = $pid.
-      # If that doesn’t work, signal the one process.
-      command kill -INT -$pid 2>/dev/null || command kill -INT $pid 2>/dev/null
-    }
-
-    # Default exit status
-    local -i rc=0
-
-    # Animate the spinner while waiting for the exit code over the FIFO.
-    {
-      # Hide cursor
-      if (( ${+terminfo[civis]} )); then
-        print -n -- $terminfo[civis]
-      else
-        print -n -- $'\e[?25l'
-      fi
-
-      # Clear what the user typed (per requirement)
-      _zsh_opencode_tab_spin_clear_line
-
-      local -i i=1
-      local line=""
-      while true; do
-        _zsh_opencode_tab_spin_render "${_spin_frames[i]}" "${_spin_message}" "${_spin_render_mode}"
-
-        if read -t "$_spin_interval" -u $status_fd line; then
-          if [[ "$line" == <-> ]]; then
-            # if line contains only digits
-            rc=$line
-          else
-            # fallback case: if line contains something different
-            # though, this should never happen..
-            rc=1
-          fi
-          # exit the loop
-          break
-        fi
-
-        # If user sent Ctrl-C but the process did not output any return code yet
-        # after certain time, then escalate to kill -TERM and then kill -KILL
-        if (( cancelled )); then
-          # Failsafe: if the process is gone but we didn't get a status, stop.
-          if ! kill -0 $pid 2>/dev/null; then
-            rc=1
-            break
-          fi
-
-          # If the worker ignores INT, escalate after a short grace period.
-          if (( ! cancel_sent_term && (SECONDS - cancel_t0) >= 2 )); then
-            kill -TERM -$pid 2>/dev/null || kill -TERM $pid 2>/dev/null
-            cancel_sent_term=1
-          fi
-          if (( ! cancel_sent_kill && (SECONDS - cancel_t0) >= 4 )); then
-            kill -KILL -$pid 2>/dev/null || kill -KILL $pid 2>/dev/null
-            cancel_sent_kill=1
-          fi
-        fi
-
-        i=$(( (i % ${#_spin_frames}) + 1 ))
-      done
-    } always {
-      # Restore cursor
-      if (( ${+terminfo[cnorm]} )); then
-        print -n -- $terminfo[cnorm]
-      else
-        print -n -- $'\e[?25h'
-      fi
-    }
-  
-    # Reset the buffer clearing the spinner
-    _zsh_opencode_tab_spin_clear_line
-  } always {
-    # Close FIFO fd and remove FIFO.
-    exec {status_fd}<&- 2>/dev/null
-    exec {status_fd}>&- 2>/dev/null
-    command rm -f -- "$status_fifo" 2>/dev/null
-  }
-
-  if (( _spin_print_output )) || (( rc != 0 )) || (( cancelled )); then
-    if (( cancelled )); then
-      print -r -- "cancelled by the user"
-    elif (( rc != 0 )); then
-      print -r -- "zsh-opencode-tab: unexpected termination (exit code: $rc)"
-    fi
-    # If file exists
-    if [[ -s $out ]]; then
-      # Print the output from the background process;
-      # this may also contain any error messages
-      command cat -- "$out"
-    fi
-  fi
-
-  # Remove the auxiliary file
-  command rm -f -- "$out" 2>/dev/null
-  return $rc
 }
