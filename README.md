@@ -56,6 +56,9 @@ Notes:
 
 - If the line does not start with `#`, TAB behaves as usual (your original widget is preserved).
 - The leading `#` (and surrounding whitespace) is stripped before sending the request to the agent.
+- Magic prefixes:
+  - `#=` keeps your request as a comment line above the generated command(s).
+  - `#?` asks for an explanation and inserts it back as comment lines.
 
 ## Mini Demo
 
