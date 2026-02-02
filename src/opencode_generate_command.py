@@ -54,14 +54,16 @@ def _parse_json_events(text: str) -> tuple[str, str]:
     return ("".join(chunks), session_id)
 
 
-def _render_prompt(user_request: str, ostype: str, gnu: str) -> str:
+def _render_prompt(user_request: str, ostype: str, gnu: str, mode: str) -> str:
     # Keep this intentionally small and explicit. The agent definition lives in
     # OPENCODE_CONFIG_DIR/agents/<agent>.md, loaded by opencode.
+    mode = (mode or "").strip() or "1"
     return (
         "<user>\n"
         "<config>\n"
-        f"OSTYPE={ostype}\n"
-        f"GNU={gnu}\n"
+        f"{{OSTYPE}}={ostype}\n"
+        f"{{GNU}}={gnu}\n"
+        f"{{MODE}}={mode}\n"
         "</config>\n"
         "<request>\n"
         f"{user_request}\n"
@@ -91,6 +93,7 @@ def main() -> int:
     ap.add_argument("--user-request", required=True)
     ap.add_argument("--ostype", default="")
     ap.add_argument("--gnu", default="1")
+    ap.add_argument("--mode", default="1")
     ap.add_argument("--config-dir", default="")
     ap.add_argument("--model", default="")
     ap.add_argument("--backend", default="")
@@ -102,7 +105,7 @@ def main() -> int:
     ap.add_argument("--delete-session", action="store_true")
     args, _ = ap.parse_known_args()
 
-    prompt = _render_prompt(args.user_request, args.ostype, args.gnu)
+    prompt = _render_prompt(args.user_request, args.ostype, args.gnu, args.mode)
 
     opencode_bin = shutil.which("opencode")
     if not opencode_bin:
