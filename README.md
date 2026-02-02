@@ -57,6 +57,10 @@ Notes:
 
 Type each request line (starting with `#`) and press TAB. The plugin inserts the generated command into your prompt; it does not execute it.
 
+Demo video: https://github.com/alberti42/zsh-opencode-tab/releases/download/1.0.0/demo.mov
+
+<video src="https://github.com/alberti42/zsh-opencode-tab/releases/download/1.0.0/demo.mov" controls muted playsinline></video>
+
 Example: list commits in a SHA range (in chronological order):
 
 ```zsh
