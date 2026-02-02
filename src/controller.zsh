@@ -18,8 +18,11 @@ _zsh_opencode_tab.run_with_spinner() {
     return 1
   fi
 
-  # Store the buffer (user command line)
-  local cmdline="$BUFFER"
+  # Inputs:
+  # - $1: request kind: command | keep | explain
+  # - $2: original cmdline (defaults to current $BUFFER)
+  local kind=${1:-command}
+  local cmdline=${2:-$BUFFER}
 
   # Return immediately if the buffer was empty
   [[ -n $cmdline ]] || return 0
@@ -30,10 +33,17 @@ _zsh_opencode_tab.run_with_spinner() {
   _spinner_interval=${_zsh_opencode_tab[spinner.interval_s]}
   _spinner_message=${_zsh_opencode_tab[spinner.message]}
 
-  # Strip leading whitespace, then strip a leading '#', then strip whitespace again.
+  # Strip leading whitespace, then strip the magic prefix, then strip whitespace again.
   local user_request=${cmdline##[[:space:]]#}
-  user_request=${user_request#\#}
+  case "$kind" in
+    keep)    user_request=${user_request#\#=} ;;
+    explain) user_request=${user_request#\#\?} ;;
+    *)       user_request=${user_request#\#} ;;
+  esac
   user_request=${user_request##[[:space:]]#}
+
+  local mode=1
+  [[ "$kind" == "explain" ]] && mode=2
 
   {
     # Use a FIFO to receive the background command's exit status.
@@ -92,6 +102,7 @@ _zsh_opencode_tab.run_with_spinner() {
         --user-request "$user_request" \
         --ostype "$OSTYPE" \
         --gnu "${_zsh_opencode_tab[opencode.gnu]}" \
+        --mode "$mode" \
         --config-dir "${_zsh_opencode_tab[opencode.config_dir]}" \
         --backend "${_zsh_opencode_tab[opencode.attach]}" \
         --title "${_zsh_opencode_tab[opencode.title]}" \
@@ -122,7 +133,7 @@ _zsh_opencode_tab.run_with_spinner() {
       (( cancel_t0 == -1 )) && cancel_t0=$SECONDS
       # Interrupt the background process; a negative PID sends
       # SIGINT to the entire process group whose PGID = $pid.
-      # If that doesn’t work, signal the one process.
+      # If that doesn't work, signal the one process.
       command kill -INT -$pid 2>/dev/null || command kill -INT $pid 2>/dev/null
     }
 
@@ -227,7 +238,22 @@ _zsh_opencode_tab.run_with_spinner() {
     return 1
   fi
 
-  BUFFER="$text"
+  if [[ "$kind" == "keep" ]]; then
+    BUFFER="# $user_request"$'\n'"$text"
+  elif [[ "$kind" == "explain" ]]; then
+    local commented=""
+    local line
+    for line in ${(f)text}; do
+      if [[ -n $line ]]; then
+        commented+="# $line"$'\n'
+      else
+        commented+="#"$'\n'
+      fi
+    done
+    BUFFER=${commented%$'\n'}
+  else
+    BUFFER="$text"
+  fi
   CURSOR=${#BUFFER}
   zle -R
   return 0

@@ -37,8 +37,13 @@ function _zsh_opencode_tab_or_fallback() {
   # So we keep on purpose the logic of `_zsh_opencode_tab_or_fallback`
   # very simple and short, without relying on special zsh options.
   
-  if [[ $BUFFER =~ ^[[:space:]]*# ]]; then
-    _zsh_opencode_tab.run_with_spinner
+  # NOTE: the regex is quoted so `#` is not parsed as a shell comment.
+  if [[ $BUFFER =~ '^[[:space:]]*#=' ]]; then
+    _zsh_opencode_tab.run_with_spinner keep "$BUFFER"
+  elif [[ $BUFFER =~ '^[[:space:]]*#\?' ]]; then
+    _zsh_opencode_tab.run_with_spinner explain "$BUFFER"
+  elif [[ $BUFFER =~ '^[[:space:]]*#' ]]; then
+    _zsh_opencode_tab.run_with_spinner command "$BUFFER"
   else
     # Fallback to whatever was originally bound to Tab in the current keymap.
     # Note: $KEYMAP is often "main" (not "emacs"/"viins").
