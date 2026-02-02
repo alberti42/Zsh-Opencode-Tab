@@ -146,6 +146,8 @@ The plugin reads these environment variables at load time:
 
 - `Z_OC_TAB_DEBUG` (default: `0`)
   - Enable debug behavior (internal).
+- `Z_OC_TAB_DEBUG_LOG` (default: `/tmp/zsh-opencode-tab.log`)
+  - Path to append debug logs to when `Z_OC_TAB_DEBUG=1`.
 
 #### Spinner
 

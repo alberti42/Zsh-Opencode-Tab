@@ -218,10 +218,11 @@ _zsh_opencode_tab.run_with_spinner() {
   command rm -f -- "$out" 2>/dev/null
 
   if (( ${_zsh_opencode_tab[debug]} )); then
-    local dbg_file="${HOME}/debug.txt"
+    local dbg_file=${_zsh_opencode_tab[debug_log]}
     {
       print -r -- "----- zsh-opencode-tab worker output -----"
-      print -r -- "EPOCHSECONDS=$EPOCHSECONDS kind=$kind"
+      print -r -- "timestamp=$(date)"
+      print -r -- "kind=$kind"
       print -r -- "$output"
       print -r -- "-----"
     } >>| "$dbg_file" 2>/dev/null

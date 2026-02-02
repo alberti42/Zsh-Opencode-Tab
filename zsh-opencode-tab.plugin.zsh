@@ -43,6 +43,7 @@ typeset -gA _zsh_opencode_tab
 # Absolute directory of this plugin file
 _zsh_opencode_tab[dir]="${${(%):-%x}:a:h}"
 _zsh_opencode_tab[debug]=${Z_OC_TAB_DEBUG:-"0"}
+_zsh_opencode_tab[debug_log]=${Z_OC_TAB_DEBUG_LOG:-'/tmp/zsh-opencode-tab.log'}
 
 # Spinner configuration (resolved once at plugin load time)
 () {
