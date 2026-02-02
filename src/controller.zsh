@@ -14,6 +14,10 @@ _zsh_opencode_tab.run_with_spinner() {
   emulate -L zsh
   setopt localoptions localtraps no_notify extendedglob
 
+  # Don't let the user's tracing options corrupt the prompt while ZLE is active.
+  # (e.g. `set -x` / `setopt xtrace` can print variable assignments like `line=0`.)
+  unsetopt xtrace verbose 2>/dev/null || true
+
   if [[ -z ${ZLE-} && -z ${WIDGET-} ]]; then
     return 1
   fi
@@ -213,6 +217,16 @@ _zsh_opencode_tab.run_with_spinner() {
   output=$(<"$out")
   command rm -f -- "$out" 2>/dev/null
 
+  if (( ${_zsh_opencode_tab[debug]} )); then
+    local dbg_file="${HOME}/debug.txt"
+    {
+      print -r -- "----- zsh-opencode-tab worker output -----"
+      print -r -- "EPOCHSECONDS=$EPOCHSECONDS kind=$kind"
+      print -r -- "$output"
+      print -r -- "-----"
+    } >>| "$dbg_file" 2>/dev/null
+  fi
+
   # Output protocol from `src/opencode_generate_command.py`:
   # - Always: session_id + US + text + "\n"
   # - US is ASCII Unit Separator (0x1f). It's uncommon in normal text and
@@ -244,8 +258,16 @@ _zsh_opencode_tab.run_with_spinner() {
     local commented=""
     local line
     for line in ${(f)text}; do
-      if [[ -n $line ]]; then
-        commented+="# $line"$'\n'
+      local raw=${line##[[:space:]]#}
+      # If the model already returned comment-like output (or markdown headings
+      # using #), normalize it so we don't end up with "# # # ...".
+      while [[ $raw == \#* ]]; do
+        raw=${raw#\#}
+        raw=${raw##[[:space:]]#}
+      done
+
+      if [[ -n $raw ]]; then
+        commented+="# $raw"$'\n'
       else
         commented+="#"$'\n'
       fi
