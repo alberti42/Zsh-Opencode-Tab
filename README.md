@@ -57,7 +57,7 @@ Notes:
 - If the line does not start with `#`, TAB behaves as usual (your original widget is preserved).
 - The leading `#` (and surrounding whitespace) is stripped before sending the request to the agent.
 
-## Mini Demo (Examples)
+## Mini Demo
 
 Type each request line (starting with `#`) and press TAB. The plugin inserts the generated command into your prompt; it does not execute it.
 
@@ -105,6 +105,8 @@ To change them, update your `.zshrc` and reload your shell (`exec zsh`).
 
 ### Common Settings
 
+For the best-looking "Knight Rider" fade effect, set the spinner background color to match your terminal background.
+
 ```zsh
 # Optional: attach to a running opencode server (warm-start)
 # NOTE: upstream currently does not support using --attach and --agent together.
@@ -117,10 +119,23 @@ export Z_OC_TAB_SPINNER_INTERVAL='0.03'
 
 # Message shown after the bar
 export Z_OC_TAB_SPINNER_MESSAGE='Please wait for the agent ...'
+
+# IMPORTANT: set this to your terminal background color.
+# Tip: use a color picker / eyedropper to measure the hex color of your terminal background.
+export Z_OC_TAB_SPINNER_BG_HEX='#24273A'
 ```
 
+How to pick the right color:
+
+- Use any "eyedropper" / color picker tool, click your terminal background, and copy the hex value (like `#1e1e1e`).
+- On macOS, the built-in "Digital Color Meter" app can do this.
+
+### Advanced: All Customizable Settings
+
+Most people never need these. They are here if you want to fine-tune the feel of the spinner (speed, colors, fading), control how opencode is invoked (model, logging), or point the plugin at your own opencode config directory.
+
 <details>
-<summary>Advanced: All Customizable Settings</summary>
+<summary><strong>Click to expand the full list</strong></summary>
 
 The plugin reads these environment variables at load time:
 
