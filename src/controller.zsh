@@ -14,10 +14,6 @@ _zsh_opencode_tab.run_with_spinner() {
   emulate -L zsh
   setopt localoptions localtraps no_notify extendedglob
 
-  # Don't let the user's tracing options corrupt the prompt while ZLE is active.
-  # (e.g. `set -x` / `setopt xtrace` can print variable assignments like `line=0`.)
-  unsetopt xtrace verbose 2>/dev/null || true
-
   if [[ -z ${ZLE-} && -z ${WIDGET-} ]]; then
     return 1
   fi
@@ -253,27 +249,31 @@ _zsh_opencode_tab.run_with_spinner() {
     return 1
   fi
 
+  local commented=""
+  # explanation line
+  local exp_line
+  local raw
+    
   if [[ "$kind" == "keep" ]]; then
     BUFFER="# $user_request"$'\n'"$text"
   elif [[ "$kind" == "explain" ]]; then
-    local commented=""
-    local line
-    for line in ${(f)text}; do
-      local raw=${line##[[:space:]]#}
-      # If the model already returned comment-like output (or markdown headings
-      # using #), normalize it so we don't end up with "# # # ...".
-      while [[ $raw == \#* ]]; do
-        raw=${raw#\#}
-        raw=${raw##[[:space:]]#}
-      done
+    # for line in ${(f)text}; do
+    #   raw=${line##[[:space:]]#}
+    #   # If the model already returned comment-like output (or markdown headings
+    #   # using #), normalize it so we don't end up with "# # # ...".
+    #   while [[ $raw == \#* ]]; do
+    #     raw=${raw#\#}
+    #     raw=${raw##[[:space:]]#}
+    #   done
 
-      if [[ -n $raw ]]; then
-        commented+="# $raw"$'\n'
-      else
-        commented+="#"$'\n'
-      fi
-    done
-    BUFFER=${commented%$'\n'}
+    #   if [[ -n $raw ]]; then
+    #     commented+="# $raw"$'\n'
+    #   else
+    #     commented+="#"$'\n'
+    #   fi
+    # done
+    # BUFFER=${commented%$'\n'}
+    BUFFER="$text"
   else
     BUFFER="$text"
   fi
