@@ -214,6 +214,8 @@ This plugin is built around an opencode agent that is optimized for generating z
 - Custom agents: set `Z_OC_TAB_OPENCODE_AGENT` to any primary agent name that opencode can resolve.
 - Custom prompts: point `Z_OC_TAB_OPENCODE_CONFIG_DIR` at your own opencode config directory and provide `agents/<agent>.md` with your preferred instruction set.
 
+Tip: when iterating on an agent prompt, develop in cold-start mode (leave `Z_OC_TAB_OPENCODE_ATTACH` empty when loading this plugin). In attach mode, agents are loaded only once when the opencode server starts, so prompt edits will not be picked up until you restart the server.
+
 ## Cold Start vs Attach Mode
 
 - Default (safe): do not attach; each TAB request uses the bundled agent via `OPENCODE_CONFIG_DIR=${plugin_dir}/opencode`.
