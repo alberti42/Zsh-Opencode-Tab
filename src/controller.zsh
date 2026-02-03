@@ -23,6 +23,7 @@ _zsh_opencode_tab.run_with_spinner() {
   # - $2: original cmdline (defaults to current $BUFFER)
   local kind=${1:-command}
   local cmdline=${2:-$BUFFER}
+  local -i cmd_cursor=${CURSOR:-0}
 
   # Prepare a short hint for error messages.
   local dbg_hint
@@ -232,7 +233,9 @@ _zsh_opencode_tab.run_with_spinner() {
   # If cancelled or failed, restore the original line.
   if (( cancelled )) || (( rc != 0 )); then
     BUFFER="$cmdline"
-    CURSOR=${#BUFFER}
+    CURSOR=$cmd_cursor
+    POSTDISPLAY=""
+    region_highlight=()
     zle -R
     command rm -f -- "$out" 2>/dev/null
     return $rc
@@ -304,67 +307,104 @@ _zsh_opencode_tab.run_with_spinner() {
   if [[ "$kind" == "keep" ]]; then
     BUFFER="# $user_request"$'\n'"$text"
   elif [[ "$kind" == "explain" ]]; then
-    # Restore user prompt
+    # Restore user prompt before printing.
     BUFFER="$cmdline"
-    CURSOR=${#BUFFER}
+    CURSOR=$cmd_cursor
+    POSTDISPLAY=""
+    region_highlight=()
     
     # Explanation mode: print the agent answer to the terminal scrollback.
     #
     # We intentionally do NOT insert explanation text into the ZLE buffer
     # (as commented lines) because it becomes hard to read.
     if [[ "$kind" == "explain" ]]; then
-      local orig_buffer="$BUFFER"
-      local -i orig_cursor=$CURSOR
-
       # Add a separation line between the prompt and the agent answer.
       # The extra newlines at the end ensure the prompt redraw does not end up
       # on the same line and visually overwrite the last line of output.
-      local explain_text=$'---\n'"$text"$'\n\n'
+      local explain_text=$'---\n'"$text"
 
       local explain_file
       explain_file="$(mktemp -t zsh-opencode-tab.explain.XXXXXX)" || return 1
       print -r -- "$explain_text" >| "$explain_file" 2>/dev/null || { command rm -f -- "$explain_file" 2>/dev/null; return 1; }
 
-      # Best-effort: flush pending input and let ZLE settle before printing.
-      zle -I
-
-      # Print directly (no injected command line). This may still be affected by
-      # prompt redraws in some setups; we're testing feasibility.
+      # One-shot printer (outside ZLE).
       #
-      # The user can customize the print command via Z_OC_TAB_EXPLAIN_PRINT_CMD.
-      # Use '{}' as a placeholder for the file path.
-      local print_cmd=${_zsh_opencode_tab[explain.print_cmd]}
-      [[ -n $print_cmd ]] || print_cmd='cat'
+      # We cannot safely run cat/bat while ZLE is active because prompt redraws
+      # (and syntax highlighting) race terminal output. Instead we register a
+      # one-shot `precmd` hook that runs right before the next prompt.
+      _zsh_opencode_tab.explain.precmd() {
+        emulate -L zsh
+        setopt localoptions
 
-      local -a print_argv
-      print_argv=( ${=print_cmd} )
-      (( ${#print_argv} )) || print_argv=(cat)
+        # One-shot hook:
+        # - `precmd` runs outside ZLE, right before the prompt is drawn.
+        # - We unregister ourselves immediately so we do not permanently change
+        #   the user's prompt behavior.
+        # - The payload is passed via `_zsh_opencode_tab[explain.file]` (a temp
+        #   file path written by the ZLE widget).
 
-      local -i has_placeholder=0
-      local -i i
-      for (( i = 1; i <= ${#print_argv}; i++ )); do
-        if [[ ${print_argv[i]} == *'{}'* ]]; then
-          has_placeholder=1
-          print_argv[i]=${print_argv[i]//\{\}/$explain_file}
+        autoload -Uz add-zsh-hook
+        add-zsh-hook -d precmd _zsh_opencode_tab.explain.precmd 2>/dev/null
+
+        # Read and clear the pending file path first, so failures do not leave
+        # us stuck in a "pending" state.
+        local f=${_zsh_opencode_tab[explain.file]}
+        _zsh_opencode_tab[explain.file]=''
+
+        if [[ -z $f || ! -r $f ]]; then
+          [[ -n $f ]] && command rm -f -- "$f" 2>/dev/null
+          return 0
         fi
-      done
-      if (( ! has_placeholder )); then
-        print_argv+=(-- "$explain_file")
-      fi
 
-      if [[ ${print_argv[1]} == command ]]; then
-        "${print_argv[@]}"
-      else
-        command "${print_argv[@]}"
-      fi
-      local -i bat_rc=$?
+        # Build the print command.
+        # - The user configures this via `Z_OC_TAB_EXPLAIN_PRINT_CMD`.
+        # - Use '{}' as an optional placeholder for the file path.
+        # - If no placeholder is present, append the file path as the last arg
+        #   (no '--' to keep BSD/macOS tools like `cat` compatible).
+        local print_cmd=${_zsh_opencode_tab[explain.print_cmd]}
+        [[ -n $print_cmd ]] || print_cmd='cat'
 
-      command rm -f -- "$explain_file" 2>/dev/null
+        local -a print_argv
+        print_argv=( ${=print_cmd} )
+        (( ${#print_argv} )) || print_argv=(cat)
 
-      BUFFER=""
-      CURSOR=0
-      zle reset-prompt
-      return $bat_rc
+        local -i has_placeholder=0
+        local -i i
+        for (( i = 1; i <= ${#print_argv}; i++ )); do
+          if [[ ${print_argv[i]} == *'{}'* ]]; then
+            has_placeholder=1
+            print_argv[i]=${print_argv[i]//\{\}/$f}
+          fi
+        done
+        if (( ! has_placeholder )); then
+          print_argv+=("$f")
+        fi
+
+        local -i rc=0
+        {
+          if [[ ${print_argv[1]} == command ]]; then
+            "${print_argv[@]}"
+          else
+            command "${print_argv[@]}"
+          fi
+          rc=$?
+        } always {
+          command rm -f -- "$f" 2>/dev/null
+        }
+        return $rc
+      }
+
+      # Inside ZLE widget (explain mode): schedule printing, then consume
+      # the line as a comment (no-op) to return a fresh prompt.
+      _zsh_opencode_tab[explain.file]="$explain_file"
+      autoload -Uz add-zsh-hook
+      add-zsh-hook -d precmd _zsh_opencode_tab.explain.precmd 2>/dev/null
+      add-zsh-hook precmd _zsh_opencode_tab.explain.precmd
+      BUFFER="# $user_request"
+      CURSOR=${#BUFFER}
+      zle accept-line
+
+      return 0
     fi
     return 0
   else
