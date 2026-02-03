@@ -287,7 +287,7 @@ _zsh_opencode_tab.run_with_spinner() {
   # - text: everything after US (may be multi-line)
   session_id=${output%%"$US"*}
   text=${output#*"$US"}
-
+  
   # Empty output means we have nothing meaningful to insert.
   if [[ -z ${text//[[:space:]]/} ]]; then
     BUFFER="$cmdline"
@@ -302,21 +302,69 @@ _zsh_opencode_tab.run_with_spinner() {
   if [[ "$kind" == "keep" ]]; then
     BUFFER="# $user_request"$'\n'"$text"
   elif [[ "$kind" == "explain" ]]; then
-    # Explain mode: turn the returned text into a comment block so it is safe to
-    # keep in the prompt (won't execute) and easy to copy.
-    local commented=""
-    local exp_line
-    for exp_line in ${(f)text}; do
-      # Prefix every line with '# ' so the explanation is safe to keep in the
-      # prompt (it won't execute) and easy to copy.
-      if [[ -n $exp_line ]]; then
-        commented+="# $exp_line"$'\n'
-      else
-        commented+="#"$'\n'
+    # Restore user prompt
+    BUFFER="$cmdline"
+    CURSOR=${#BUFFER}
+    
+    # Explanation mode: print the agent answer to the terminal scrollback.
+    #
+    # We intentionally do NOT insert explanation text into the ZLE buffer
+    # (as commented lines) because it becomes hard to read.
+    if [[ "$kind" == "explain" ]]; then
+      local orig_buffer="$BUFFER"
+      local -i orig_cursor=$CURSOR
+
+      # Add a separation line between the prompt and the agent answer.
+      # The extra newlines at the end ensure the prompt redraw does not end up
+      # on the same line and visually overwrite the last line of output.
+      local explain_text=$'---\n'"$text"$'\n\n'
+
+      local explain_file
+      explain_file="$(mktemp -t zsh-opencode-tab.explain.XXXXXX)" || return 1
+      print -r -- "$explain_text" >| "$explain_file" 2>/dev/null || { command rm -f -- "$explain_file" 2>/dev/null; return 1; }
+
+      # Best-effort: flush pending input and let ZLE settle before printing.
+      zle -I
+
+      # Print directly (no injected command line). This may still be affected by
+      # prompt redraws in some setups; we're testing feasibility.
+      #
+      # The user can customize the print command via Z_OC_TAB_EXPLAIN_PRINT_CMD.
+      # Use '{}' as a placeholder for the file path.
+      local print_cmd=${_zsh_opencode_tab[explain.print_cmd]}
+      [[ -n $print_cmd ]] || print_cmd='cat'
+
+      local -a print_argv
+      print_argv=( ${=print_cmd} )
+      (( ${#print_argv} )) || print_argv=(cat)
+
+      local -i has_placeholder=0
+      local -i i
+      for (( i = 1; i <= ${#print_argv}; i++ )); do
+        if [[ ${print_argv[i]} == *'{}'* ]]; then
+          has_placeholder=1
+          print_argv[i]=${print_argv[i]//\{\}/$explain_file}
+        fi
+      done
+      if (( ! has_placeholder )); then
+        print_argv+=(-- "$explain_file")
       fi
-    done
-    # Put the comment block back into the editor buffer.
-    BUFFER=${commented%$'\n'}
+
+      if [[ ${print_argv[1]} == command ]]; then
+        "${print_argv[@]}"
+      else
+        command "${print_argv[@]}"
+      fi
+      local -i bat_rc=$?
+
+      command rm -f -- "$explain_file" 2>/dev/null
+
+      BUFFER=""
+      CURSOR=0
+      zle reset-prompt
+      return $bat_rc
+    fi
+    return 0
   else
     # Command mode: put the generated command(s) into the buffer. The user can
     # edit and run them by pressing Enter.
