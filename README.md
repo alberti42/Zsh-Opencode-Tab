@@ -46,6 +46,37 @@ Pick a prefix:
 
 The persistence behavior is what makes iteration feel nice: edit the first line and press TAB again.
 
+## Pro Tip: Iterate In Place
+
+When you use persistence, your prompt becomes a tiny scratchpad. You're not "chatting". You're drafting a command.
+
+- First TAB gets you a rough draft.
+- Next TAB is a revision pass: you edit the first line, keep the old draft underneath, and ask for a tweak.
+- Because the old draft stays in the buffer, the agent can refine it instead of reinventing it.
+
+That means you can do this:
+
+1) Ask for a rough draft:
+
+```zsh
+#+ find all .txt files under this folder, one per line<TAB>
+```
+
+2) Refine the request and press TAB again (edit the first line, or add a new line):
+
+```zsh
+#+ but exclude files with _test_ in the filename<TAB>
+```
+
+3) Add the action you actually want:
+
+```zsh
+#+ and now show line counts for each file and sort biggest first<TAB>
+```
+
+You can keep iterating until it looks right, then run it.
+Still safe: it never runs anything for you.
+
 <details>
 <summary><strong>Click to expand the TLDR section on how it works internally</strong></summary>
 
