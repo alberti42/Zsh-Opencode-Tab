@@ -169,6 +169,12 @@ For the best-looking "Knight Rider" fade effect, set the spinner background colo
 # Until that is fixed, keep this empty (default) or you may not be able to select the agent.
 export Z_OC_TAB_OPENCODE_ATTACH=''
 
+# Debug: bypass opencode and return a dummy reply immediately.
+# Useful to iterate on UI/integration without making remote calls.
+export Z_OC_TAB_OPENCODE_DUMMY=0
+# Optional: what to insert into the prompt when dummy mode is enabled.
+export Z_OC_TAB_OPENCODE_DUMMY_TEXT="echo 'hello from dummy mode'"
+
 # Speed (seconds per frame)
 export Z_OC_TAB_SPINNER_INTERVAL='0.03'
 

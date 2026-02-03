@@ -140,6 +140,8 @@ _zsh_opencode_tab.run_with_spinner() {
         [[ -n ${_zsh_opencode_tab[opencode.log_level]} ]] && cmd+=(--log-level "${_zsh_opencode_tab[opencode.log_level]}")
         (( ${_zsh_opencode_tab[opencode.print_logs]} )) && cmd+=(--print-logs)
         (( ${_zsh_opencode_tab[opencode.delete_session]} )) && cmd+=(--delete-session)
+        (( ${_zsh_opencode_tab[opencode.dummy]} )) && cmd+=(--debug-dummy)
+        [[ -n ${_zsh_opencode_tab[opencode.dummy_text]} ]] && cmd+=(--debug-dummy-text "${_zsh_opencode_tab[opencode.dummy_text]}")
       }
 
       # Run the worker. Its stdout/stderr are captured into $out.

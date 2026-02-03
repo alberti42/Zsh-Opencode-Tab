@@ -131,6 +131,10 @@ _zsh_opencode_tab[explain.print_cmd]=${Z_OC_TAB_EXPLAIN_PRINT_CMD:-'cat'}
 
   # Disposable sessions: delete the created session after we got the answer.
   _zsh_opencode_tab[opencode.delete_session]=${Z_OC_TAB_OPENCODE_DELETE_SESSION:-1}
+
+  # Debug: bypass opencode and return a dummy reply (fast UI iteration).
+  _zsh_opencode_tab[opencode.dummy]=${Z_OC_TAB_OPENCODE_DUMMY:-0}
+  _zsh_opencode_tab[opencode.dummy_text]=${Z_OC_TAB_OPENCODE_DUMMY_TEXT:-''}
 }
 
 # Saves original TAB binding per keymap; binds TAB to _zsh_opencode_tab_or_fallback
