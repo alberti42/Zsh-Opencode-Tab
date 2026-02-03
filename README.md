@@ -4,30 +4,43 @@
 
 # zsh-opencode-tab: a little AI magic in the terminal
 
-This is a zsh plugin that turns natural language into a zsh command by pressing TAB. It is fully compatible with the popular Oh My Zsh plugin framework. 
+Turn a comment into a command by pressing TAB.
 
-It has two modes, each backed by a different prompt optimized for the job:
+It feels like talking to your terminal.
+You type what you want as a quick note to yourself, hit TAB, and your prompt fills with a real command you can review.
+Sometimes you tweak it. Sometimes you just run it.
+Either way, you stay in control.
 
-- Generate: turns your request into zsh command(s).
-- Explain: answers in plain English and explains the command/workflow.
+This is a zsh plugin, and it plays nicely with Oh My Zsh.
+Most importantly: it keeps your normal TAB completion. It only steps in when you ask for it.
 
-# How does it work?
+## Quick Look
 
-If you press TAB when your current command line starts with `#` (a comment), it treats that line as a request to an AI agent. It keeps your normal TAB completion in all other situations.
+Type a comment and press TAB:
 
-- Calls `opencode run --format json` under the hood.
-- Inserts the generated shell command(s) back into your ZLE buffer (it does not execute them).
+```zsh
+# list commits between 869b1373 and f1b8edd0, oldest first
+```
 
-It never executes anything! It only inserts text into your prompt, so you can review/edit it and decide whether to run it.
+After TAB, your prompt becomes command(s) you can run:
 
-Pick a mode with a simple prefix at the start of the line:
+```zsh
+git rev-list --reverse 869b1373..f1b8edd0
+```
+
+Safety line (worth repeating): it never runs anything.
+It only inserts text into your prompt.
+
+## How It Works (From A User's Point Of View)
+
+- If the current line starts with `#`, TAB treats it as a request and generates zsh command(s).
+- If it does not start with `#`, TAB behaves exactly like it did before.
+
+Pick a prefix:
 
 - `# <request><TAB>` generate command(s) (default)
-- `#? <request><TAB>` provide an explanation to your question; you can in principle ask anything, but it is tailored to answer shell-type of questions.
-
-Generate-mode modifier:
-
-- `#= <request><TAB>` generate, and also persist your request as a comment above the generated command(s)
+- `#= <request><TAB>` generate command(s) and also keep your request as a comment above them
+- `#? <question><TAB>` explanation mode; prints an answer to your terminal (does not edit your prompt)
 
 <details>
 <summary><strong>Click to expand the TLDR section on how it works internally</strong></summary>
@@ -53,14 +66,14 @@ Generate-mode modifier:
 
 ## Installation
 
-Note: the `export` configurations shown below are just an example. For a full range of options, see the section _Configuration_ down below.
+Note: the `export` configurations shown below are just examples. For the full list, see _Configuration_.
 
 **Oh My Zsh:**
 
 1) Clone this repo into your custom plugins directory:
 
 ```zsh
-git clone <this-repo-url> "$ZSH_CUSTOM/plugins/zsh-opencode-tab"
+git clone https://github.com/alberti42/zsh-opencode-tab.git "$ZSH_CUSTOM/plugins/zsh-opencode-tab"
 ```
 
 2) Add it to your `.zshrc`:
@@ -68,7 +81,7 @@ git clone <this-repo-url> "$ZSH_CUSTOM/plugins/zsh-opencode-tab"
 ```zsh
 export \
 	Z_OC_TAB_OPENCODE_MODEL="anthropic/claude-3-5-haiku-latest" \
-  Z_OC_TAB_EXPLAIN_PRINT_CMD="bat --plain --color=always --decorations=always --language markdown --paging=never --language=markdown {}"'
+  Z_OC_TAB_EXPLAIN_PRINT_CMD='bat --plain --color=always --decorations=always --language=markdown --paging=never {}'
 
 plugins+=(zsh-opencode-tab)
 ```
@@ -86,7 +99,7 @@ exec zsh
 2) Source it from your `.zshrc`:
 
 ```zsh
-Z_OC_TAB_OPENCODE_MODEL="anthropic/claude-3-5-haiku-latests"
+Z_OC_TAB_OPENCODE_MODEL="anthropic/claude-3-5-haiku-latest"
 source "$HOME/local/share/my-zsh-plugins/zsh-opencode-tab/zsh-opencode-tab.plugin.zsh"
 ```
 
@@ -95,13 +108,13 @@ source "$HOME/local/share/my-zsh-plugins/zsh-opencode-tab/zsh-opencode-tab.plugi
 ```zsh
 wait'0c' atinit'
   export Z_OC_TAB_OPENCODE_MODEL="google/gemini-2.5-flash" \
-  Z_OC_TAB_EXPLAIN_PRINT_CMD="bat --plain --color=always --decorations=always --language markdown --paging=never --language=markdown {}"' \
+  Z_OC_TAB_EXPLAIN_PRINT_CMD='bat --plain --color=always --decorations=always --language=markdown --paging=never {}' \
   $__local_plugin_path/zsh-opencode-tab
 ```
 
 ## Usage
 
-Write on your command line a prompt preceded by `#` and press TAB. The plugin replaces your buffer with the command(s) generated from your prompt, ready to edit/run.
+Write a request preceded by `#` and press TAB. The plugin replaces your prompt with the generated command(s), ready to edit/run.
 
 - If the line does not start with `#`, TAB behaves as usual (your original widget is preserved).
 - The leading `#` (and surrounding whitespace) is stripped before sending the request to the agent.
@@ -304,3 +317,8 @@ Feel free to contribute to the development of this plugin or report any issues i
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+## Gentle CTA
+
+If you want to get a feel for it in 10 seconds: install it, open a new terminal, type a line starting with `#`, and press TAB.
+If it clicks, consider starring the repo: https://github.com/alberti42/zsh-opencode-tab
