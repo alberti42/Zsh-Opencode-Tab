@@ -42,32 +42,117 @@ _zsh_opencode_tab.run_with_spinner() {
   _spinner_interval=${_zsh_opencode_tab[spinner.interval_s]}
   _spinner_message=${_zsh_opencode_tab[spinner.message]}
 
-  # Parse magic only from the first line.
+  # Parse magic only from the *first line*, but preserve the full user prompt
+  # block (potentially multiple comment lines).
   #
-  # - `header_line` may contain a magic prefix like '#', '#+', '#-', or '#?'.
-  # - We keep the *exact* prefix we strip (including surrounding whitespace) so
-  #   we can restore it verbatim later. This is future-proof if we add more
-  #   magic prefixes.
-  # - The rest of the buffer (previous draft / previous generated commands) is
-  #   passed verbatim to the agent as additional context.
-  local header_line=${cmdline%%$'\n'*}
-  local tail=${cmdline#"$header_line"}
+  # Definitions:
+  # - prompt_block: consecutive comment lines at the beginning of the buffer
+  #   (these are treated as the user's prompt).
+  # - context_block: everything after the prompt block (previous generated
+  #   output, pasted snippets, etc.), passed verbatim to the agent as context.
+  #
+  # Important:
+  # - Magic (`#+`, `#-`, `#?`, `#`) is only interpreted on the first prompt line.
+  # - The exact magic prefix we strip from the first line is stored as
+  #   `magic_prefix` and restored verbatim in persist/explain flows.
 
+  local -a _lines
+  _lines=("${(@f)cmdline}")
+
+  local -a prompt_lines context_lines
+  prompt_lines=()
+  context_lines=()
+
+  local -i i=1
+  while (( i <= ${#_lines} )); do
+    # The prompt block is the initial run of comment lines.
+    # Stop when we hit the delimiter line ("# ---"), which marks the start of
+    # the agent context block.
+    if [[ ${_lines[i]} == [[:space:]]#\#* ]]; then
+      if [[ ${_lines[i]} == [[:space:]]#\#[[:space:]]#---#[[:space:]]# ]]; then
+        break
+      fi
+      prompt_lines+=("${_lines[i]}")
+      (( i++ ))
+      continue
+    fi
+    break
+  done
+
+  # Separator between the persisted prompt block and generated output.
+  # Prefer an explicit marker line so we can keep the output tight (no blank
+  # lines) while still preventing generated comment lines from being parsed as
+  # part of the user's prompt block on the next iteration.
+  local delimiter_line=""
+  if (( i <= ${#_lines} )) && [[ ${_lines[i]} == [[:space:]]#\#[[:space:]]#---#[[:space:]]# ]]; then
+    delimiter_line=${_lines[i]}
+    (( i++ ))
+  fi
+
+  # Back-compat / cosmetic: skip a single blank separator line.
+  if (( i <= ${#_lines} )) && [[ -z ${_lines[i]} ]]; then
+    (( i++ ))
+  fi
+
+  while (( i <= ${#_lines} )); do
+    context_lines+=("${_lines[i]}")
+    (( i++ ))
+  done
+
+  local prompt_block=${(j:$'\n':)prompt_lines}
+  local context_block=${(j:$'\n':)context_lines}
+
+  local first_prompt_line=${prompt_lines[1]}
   local magic_prefix request_line
-  if [[ $header_line =~ '^([[:space:]]*#([+\-\?])?[[:space:]]*)(.*)$' ]]; then
+  if [[ $first_prompt_line =~ '^([[:space:]]*#([+\-\?])?[[:space:]]*)(.*)$' ]]; then
     magic_prefix=${match[1]}
     request_line=${match[3]}
   else
-    # Defensive fallback: should not happen because the widget only triggers on '#...'.
     magic_prefix=""
-    request_line="$header_line"
+    request_line="$first_prompt_line"
   fi
 
-  # Request payload = stripped request line + rest of buffer (verbatim).
-  local user_request="${request_line}${tail}"
+  # Build the request payload we send to the agent.
+  # - Remove the magic prefix from the first line.
+  # - Remove leading comment markers from continuation lines.
+  local -a req_lines
+  req_lines=("$request_line")
+  for (( i = 2; i <= ${#prompt_lines}; i++ )); do
+    local l=${prompt_lines[i]##[[:space:]]#}
+    l=${l#\#}
+    l=${l#[[:space:]]#}
+    req_lines+=("$l")
+  done
 
-  local mode=1
-  [[ "$kind" == "explain" ]] && mode=2
+  # If present, include the delimiter line as plain '---...' in the payload.
+  # This gives the agent a stable boundary between the user prompt and the
+  # context block.
+  if [[ -n $delimiter_line ]]; then
+    local dl=${delimiter_line##[[:space:]]#}
+    dl=${dl#\#}
+    dl=${dl#[[:space:]]#}
+    req_lines+=("$dl")
+  fi
+
+  local user_request=${(j:$'\n':)req_lines}
+  if [[ -n $context_block ]]; then
+    user_request+=$'\n'"$context_block"
+  fi
+
+  # Request payload passed to the Python worker.
+  #
+  # - For generator flows (command/persist): pass the buffer verbatim and let the
+  #   agent decide whether/how to echo user prompt lines.
+  # - For explain: keep the current structured payload.
+  local request_payload=$user_request
+  if [[ "$kind" != "explain" ]]; then
+    request_payload=$cmdline
+  fi
+
+  # Generator contract: controller decides whether the agent should echo back
+  # the user's prompt comment lines.
+  local echo_prompt=0
+  [[ "$kind" == "persist" ]] && echo_prompt=1
 
   {
     # Use a FIFO to receive the background command's exit status.
@@ -139,19 +224,33 @@ _zsh_opencode_tab.run_with_spinner() {
       # Build the worker command with the current plugin configuration.
       {
         local script="${_zsh_opencode_tab[dir]}/src/opencode_generate_command.py"
+
+        # Select agent/model based on request kind.
+        # - command/persist: generator
+        # - explain: explainer
+        local agent_to_use model_to_use
+        if [[ "$kind" == "explain" ]]; then
+          agent_to_use=${_zsh_opencode_tab[opencode.agent.explainer]}
+          model_to_use=${_zsh_opencode_tab[opencode.model.explainer]}
+        else
+          agent_to_use=${_zsh_opencode_tab[opencode.agent.generator]}
+          model_to_use=${_zsh_opencode_tab[opencode.model.generator]}
+        fi
+
         local -a cmd
         cmd=(python3 "$script" \
-          --user-request "$user_request" \
+          --user-request "$request_payload" \
           --ostype "$OSTYPE" \
           --gnu "${_zsh_opencode_tab[opencode.gnu]}" \
-          --mode "$mode" \
+          --kind "$kind" \
+          --echo-prompt "$echo_prompt" \
           --config-dir "${_zsh_opencode_tab[opencode.config_dir]}" \
           --backend "${_zsh_opencode_tab[opencode.attach]}" \
           --title "${_zsh_opencode_tab[opencode.title]}" \
-          --agent "${_zsh_opencode_tab[opencode.agent]}"
+          --agent "$agent_to_use"
         )
 
-        [[ -n ${_zsh_opencode_tab[opencode.model]} ]] && cmd+=(--model "${_zsh_opencode_tab[opencode.model]}")
+        [[ -n $model_to_use ]] && cmd+=(--model "$model_to_use")
         [[ -n ${_zsh_opencode_tab[opencode.variant]} ]] && cmd+=(--variant "${_zsh_opencode_tab[opencode.variant]}")
         [[ -n ${_zsh_opencode_tab[opencode.log_level]} ]] && cmd+=(--log-level "${_zsh_opencode_tab[opencode.log_level]}")
         (( ${_zsh_opencode_tab[opencode.print_logs]} )) && cmd+=(--print-logs)
@@ -320,7 +419,9 @@ _zsh_opencode_tab.run_with_spinner() {
   fi
 
   if [[ "$kind" == "persist" ]]; then
-    BUFFER="${magic_prefix}${request_line}"$'\n'"$text"
+    # Persist mode: the generator agent is responsible for echoing the user's
+    # prompt lines (and may add its own notes using its own conventions).
+    BUFFER="$text"
   elif [[ "$kind" == "explain" ]]; then
     # Restore user prompt before printing.
     BUFFER="$cmdline"
@@ -415,7 +516,7 @@ _zsh_opencode_tab.run_with_spinner() {
       autoload -Uz add-zsh-hook
       add-zsh-hook -d precmd _zsh_opencode_tab.explain.precmd 2>/dev/null
       add-zsh-hook precmd _zsh_opencode_tab.explain.precmd
-      BUFFER="${magic_prefix}${request_line}"
+      BUFFER="$cmdline"
       CURSOR=${#BUFFER}
       zle accept-line
 

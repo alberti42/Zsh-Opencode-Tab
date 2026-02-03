@@ -54,16 +54,16 @@ def _parse_json_events(text: str) -> tuple[str, str]:
     return ("".join(chunks), session_id)
 
 
-def _render_prompt(user_request: str, ostype: str, gnu: str, mode: str) -> str:
+def _render_prompt(user_request: str, ostype: str, gnu: str, echo_prompt: str) -> str:
     # Keep this intentionally small and explicit. The agent definition lives in
     # OPENCODE_CONFIG_DIR/agents/<agent>.md, loaded by opencode.
-    mode = (mode or "").strip() or "1"
+    echo_prompt = (echo_prompt or "").strip() or "0"
     return (
         "<user>\n"
         "<config>\n"
         f"{{OSTYPE}}={ostype}\n"
         f"{{GNU}}={gnu}\n"
-        f"{{MODE}}={mode}\n"
+        f"{{ECHO_PROMPT}}={echo_prompt}\n"
         "</config>\n"
         "<request>\n"
         f"{user_request}\n"
@@ -93,7 +93,8 @@ def main() -> int:
     ap.add_argument("--user-request", required=True)
     ap.add_argument("--ostype", default="")
     ap.add_argument("--gnu", default="1")
-    ap.add_argument("--mode", default="1")
+    ap.add_argument("--kind", default="command")
+    ap.add_argument("--echo-prompt", default="0")
     ap.add_argument("--config-dir", default="")
     ap.add_argument("--model", default="")
     ap.add_argument("--backend", default="")
@@ -120,18 +121,21 @@ def main() -> int:
     )
     args, _ = ap.parse_known_args()
 
-    prompt = _render_prompt(args.user_request, args.ostype, args.gnu, args.mode)
+    prompt = _render_prompt(
+        args.user_request,
+        args.ostype,
+        args.gnu,
+        args.echo_prompt,
+    )
 
     if args.debug_dummy:
         text = (args.debug_dummy_text or "").strip()
-        
+
         if not text:
-            if args.mode == "1":
-                # Dummy payload in generator mode
-                text = "# This is a dummy command,\nls"
-            else:
-                # Dummy payload in explanation mode
+            if args.kind == "explain":
                 text = "This is a dummy explanation,\nwhich extends over two lines."
+            else:
+                text = "# This is a dummy command,\nls"
 
         # Output protocol for the zsh controller: session_id + US + text + "\n"
         sys.stdout.write(US + text + "\n")
