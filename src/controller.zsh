@@ -24,6 +24,14 @@ _zsh_opencode_tab.run_with_spinner() {
   local kind=${1:-command}
   local cmdline=${2:-$BUFFER}
 
+  # Prepare a short hint for error messages.
+  local dbg_hint
+  if (( ${_zsh_opencode_tab[debug]} )); then
+    dbg_hint="see ${_zsh_opencode_tab[debug_log]}"
+  else
+    dbg_hint="set Z_OC_TAB_DEBUG=1 for a log"
+  fi
+
   # Return immediately if the buffer was empty
   [[ -n $cmdline ]] || return 0
   
@@ -78,8 +86,25 @@ _zsh_opencode_tab.run_with_spinner() {
       fi
     }
 
-    # Execute opencode wrapper in a background subshell.
-    # Disown the job to prevent job-control noise in the interactive shell.
+    # Run the opencode request in the background.
+    #
+    # Chain of delegation (from Zsh to the actual LLM worker):
+    # - This ZLE widget starts a background subshell (disowned).
+    # - The subshell runs a small Python wrapper: `src/opencode_generate_command.py`.
+    # - The Python wrapper runs the `opencode` CLI.
+    # - `opencode` runs the selected agent, which produces the final response.
+    #
+    # We keep the zsh side focused on ZLE rendering and process control.
+    # The Python wrapper is used because it is a convenient place to:
+    # - build the prompt payload (including config like GNU/MODE)
+    # - parse the NDJSON stream from `opencode run --format json`
+    # - optionally delete disposable sessions via the opencode server API
+    #
+    # In principle we could replace Python with tools like `curl` (HTTP) and
+    # `jq` (JSON parsing), but that would add extra external dependencies.
+    #
+    # Disown the job (&!) to avoid job-control noise in interactive shells.
+    # A FIFO is used to receive only the worker exit code.
     (
       emulate -L zsh
       setopt localoptions localtraps no_notify no_monitor
@@ -95,26 +120,29 @@ _zsh_opencode_tab.run_with_spinner() {
         exit 143
       }
 
-      # Run the process
-      local script="${_zsh_opencode_tab[dir]}/src/opencode_generate_command.py"
-      local -a cmd
-      cmd=(python3 "$script" \
-        --user-request "$user_request" \
-        --ostype "$OSTYPE" \
-        --gnu "${_zsh_opencode_tab[opencode.gnu]}" \
-        --mode "$mode" \
-        --config-dir "${_zsh_opencode_tab[opencode.config_dir]}" \
-        --backend "${_zsh_opencode_tab[opencode.attach]}" \
-        --title "${_zsh_opencode_tab[opencode.title]}" \
-        --agent "${_zsh_opencode_tab[opencode.agent]}"
-      )
+      # Build the worker command with the current plugin configuration.
+      {
+        local script="${_zsh_opencode_tab[dir]}/src/opencode_generate_command.py"
+        local -a cmd
+        cmd=(python3 "$script" \
+          --user-request "$user_request" \
+          --ostype "$OSTYPE" \
+          --gnu "${_zsh_opencode_tab[opencode.gnu]}" \
+          --mode "$mode" \
+          --config-dir "${_zsh_opencode_tab[opencode.config_dir]}" \
+          --backend "${_zsh_opencode_tab[opencode.attach]}" \
+          --title "${_zsh_opencode_tab[opencode.title]}" \
+          --agent "${_zsh_opencode_tab[opencode.agent]}"
+        )
 
-      [[ -n ${_zsh_opencode_tab[opencode.model]} ]] && cmd+=(--model "${_zsh_opencode_tab[opencode.model]}")
-      [[ -n ${_zsh_opencode_tab[opencode.variant]} ]] && cmd+=(--variant "${_zsh_opencode_tab[opencode.variant]}")
-      [[ -n ${_zsh_opencode_tab[opencode.log_level]} ]] && cmd+=(--log-level "${_zsh_opencode_tab[opencode.log_level]}")
-      (( ${_zsh_opencode_tab[opencode.print_logs]} )) && cmd+=(--print-logs)
-      (( ${_zsh_opencode_tab[opencode.delete_session]} )) && cmd+=(--delete-session)
+        [[ -n ${_zsh_opencode_tab[opencode.model]} ]] && cmd+=(--model "${_zsh_opencode_tab[opencode.model]}")
+        [[ -n ${_zsh_opencode_tab[opencode.variant]} ]] && cmd+=(--variant "${_zsh_opencode_tab[opencode.variant]}")
+        [[ -n ${_zsh_opencode_tab[opencode.log_level]} ]] && cmd+=(--log-level "${_zsh_opencode_tab[opencode.log_level]}")
+        (( ${_zsh_opencode_tab[opencode.print_logs]} )) && cmd+=(--print-logs)
+        (( ${_zsh_opencode_tab[opencode.delete_session]} )) && cmd+=(--delete-session)
+      }
 
+      # Run the worker. Its stdout/stderr are captured into $out.
       "${cmd[@]}"
 
       local -i child_rc=$?
@@ -241,20 +269,15 @@ _zsh_opencode_tab.run_with_spinner() {
   local US=$'\x1f'
 
   # Strict protocol: require the delimiter. No fallback parsing.
-  # If this triggers, the worker didn't follow the agreed output contract.
+  # If this triggers, the Python wrapper didn't follow the agreed output contract.
   if [[ "$output" != *"$US"* ]]; then
     # Fail loudly but safely: restore the user's line and show an error in the
     # ZLE message area (avoid printing to the terminal during ZLE).
     BUFFER="$cmdline"
     CURSOR=${#BUFFER}
     zle -R
-
-    local dbg_hint
-    if (( ${_zsh_opencode_tab[debug]} )); then
-      dbg_hint="see ${_zsh_opencode_tab[debug_log]}"
-    else
-      dbg_hint="set Z_OC_TAB_DEBUG=1 for a log"
-    fi
+    
+    # Show the error in the message area.
     zle -M "zsh-opencode-tab: internal protocol error (worker output missing delimiter; $dbg_hint)"
     return 1
   fi
@@ -270,6 +293,9 @@ _zsh_opencode_tab.run_with_spinner() {
     BUFFER="$cmdline"
     CURSOR=${#BUFFER}
     zle -R
+
+    # Show the error in the message area.
+    zle -M "zsh-opencode-tab: agent communication error (agent returned an empty message; $dbg_hint)"
     return 1
   fi
 
@@ -281,16 +307,22 @@ _zsh_opencode_tab.run_with_spinner() {
     local commented=""
     local exp_line
     for exp_line in ${(f)text}; do
+      # Prefix every line with '# ' so the explanation is safe to keep in the
+      # prompt (it won't execute) and easy to copy.
       if [[ -n $exp_line ]]; then
         commented+="# $exp_line"$'\n'
       else
         commented+="#"$'\n'
       fi
     done
+    # Put the comment block back into the editor buffer.
     BUFFER=${commented%$'\n'}
   else
+    # Command mode: put the generated command(s) into the buffer. The user can
+    # edit and run them by pressing Enter.
     BUFFER="$text"
   fi
+  # Place the cursor at the end of the inserted text.
   CURSOR=${#BUFFER}
   zle -R
   return 0
