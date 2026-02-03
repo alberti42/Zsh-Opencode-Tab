@@ -47,6 +47,11 @@ _zsh_opencode_tab[debug_log]=${Z_OC_TAB_DEBUG_LOG:-'/tmp/zsh-opencode-tab.log'}
 _zsh_opencode_tab[explain.print_cmd]=${Z_OC_TAB_EXPLAIN_PRINT_CMD:-'cat'}
 _zsh_opencode_tab[explain.file]=''
 
+# Default behavior for plain `# <request><TAB>`.
+# - 1: persist (keep the request line as a comment above the generated command)
+# - 0: non-persist (replace the buffer with the generated command)
+_zsh_opencode_tab[persist.default]=${Z_OC_TAB_PERSIST_DEFAULT:-1}
+
 # Spinner configuration (resolved once at plugin load time)
 () {
   emulate -L zsh
