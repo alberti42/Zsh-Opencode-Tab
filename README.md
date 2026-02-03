@@ -58,7 +58,7 @@ Notes:
 - The leading `#` (and surrounding whitespace) is stripped before sending the request to the agent.
 - Magic prefixes:
   - `#=` keeps your request as a comment line above the generated command(s).
-  - `#?` asks for an explanation and inserts it back as comment lines.
+  - `#?` asks for an explanation. By default it prints the explanation to the terminal.
 
 ## Mini Demo
 
@@ -126,6 +126,10 @@ export Z_OC_TAB_SPINNER_MESSAGE='Please wait for the agent ...'
 # IMPORTANT: set this to your terminal background color.
 # Tip: use a color picker / eyedropper to measure the hex color of your terminal background.
 export Z_OC_TAB_SPINNER_BG_HEX='#24273A'
+
+# Explanation mode output command (printed to the terminal).
+# Use '{}' as the placeholder for the temporary file path.
+export Z_OC_TAB_EXPLAIN_PRINT_CMD='bat --plain --color=always --decorations=always --language markdown --paging=never {}'
 ```
 
 How to pick the right color:
@@ -148,6 +152,10 @@ The plugin reads these environment variables at load time:
   - Enable debug behavior (internal).
 - `Z_OC_TAB_DEBUG_LOG` (default: `/tmp/zsh-opencode-tab.log`)
   - Path to append debug logs to when `Z_OC_TAB_DEBUG=1`.
+- `Z_OC_TAB_EXPLAIN_PRINT_CMD` (default: `cat`)
+  - Command used to print `#?` explanation output to the terminal.
+  - Use `{}` as a placeholder for the temporary file path.
+  - Keep it simple: the value is split on spaces.
 
 #### Spinner
 
