@@ -103,9 +103,39 @@ def main() -> int:
     ap.add_argument("--log-level", default="")
     ap.add_argument("--print-logs", action="store_true")
     ap.add_argument("--delete-session", action="store_true")
+    ap.add_argument(
+        "--debug-dummy",
+        action="store_true",
+        help="Skip opencode execution and return a mock reply.",
+    )
+    ap.add_argument(
+        "--debug-dummy-text",
+        default="",
+        help="Mock reply text to emit when --debug-dummy is set.",
+    )
+    ap.add_argument(
+        "--debug-dummy-file",
+        default="",
+        help="Read mock reply text from this file when --debug-dummy is set.",
+    )
     args, _ = ap.parse_known_args()
 
     prompt = _render_prompt(args.user_request, args.ostype, args.gnu, args.mode)
+
+    if args.debug_dummy:
+        text = (args.debug_dummy_text or "").strip()
+        
+        if not text:
+            if args.mode == "1":
+                # Dummy payload in generator mode
+                text = "# This is a dummy command,\nls"
+            else:
+                # Dummy payload in explanation mode
+                text = "This is a dummy explanation,\nwhich extends over two lines."
+
+        # Output protocol for the zsh controller: session_id + US + text + "\n"
+        sys.stdout.write(US + text + "\n")
+        return 0
 
     opencode_bin = shutil.which("opencode")
     if not opencode_bin:
@@ -136,6 +166,7 @@ def main() -> int:
     p = Popen(cmd, stdout=PIPE, stderr=PIPE, text=True, env=env)
     out, _err = p.communicate()
 
+    # ANSI_RE.sub("", out ...): strips ANSI escape sequences
     out = ANSI_RE.sub("", out or "").replace("\r", "")
 
     combined_text, session_id = _parse_json_events(out)
