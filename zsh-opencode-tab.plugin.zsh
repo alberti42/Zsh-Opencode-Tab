@@ -45,6 +45,7 @@ _zsh_opencode_tab[dir]="${${(%):-%x}:a:h}"
 _zsh_opencode_tab[debug]=${Z_OC_TAB_DEBUG:-"0"}
 _zsh_opencode_tab[debug_log]=${Z_OC_TAB_DEBUG_LOG:-'/tmp/zsh-opencode-tab.log'}
 _zsh_opencode_tab[explain.print_cmd]=${Z_OC_TAB_EXPLAIN_PRINT_CMD:-'cat'}
+_zsh_opencode_tab[explain.file]=''
 
 # Spinner configuration (resolved once at plugin load time)
 () {
