@@ -22,9 +22,10 @@ Type a comment and press TAB:
 # list commits between 869b1373 and f1b8edd0, oldest first
 ```
 
-After TAB, your prompt becomes command(s) you can run:
+After TAB, your prompt keeps your request and adds command(s) below:
 
 ```zsh
+# list commits between 869b1373 and f1b8edd0, oldest first
 git rev-list --reverse 869b1373..f1b8edd0
 ```
 
@@ -38,9 +39,12 @@ It only inserts text into your prompt.
 
 Pick a prefix:
 
-- `# <request><TAB>` generate command(s) (default)
-- `#= <request><TAB>` generate command(s) and also keep your request as a comment above them
+- `# <request><TAB>` generate command(s); by default your request stays above the result (unless you change `Z_OC_TAB_PERSIST_DEFAULT`)
+- `#+ <request><TAB>` force persistence (keep your request line above the generated command)
+- `#- <request><TAB>` force non-persistence (replace the buffer with the generated command)
 - `#? <question><TAB>` explanation mode; prints an answer to your terminal (does not edit your prompt)
+
+The persistence behavior is what makes iteration feel nice: edit the first line and press TAB again.
 
 <details>
 <summary><strong>Click to expand the TLDR section on how it works internally</strong></summary>
@@ -49,7 +53,7 @@ Pick a prefix:
 - Controller (`src/controller.zsh`):
   - starts the worker process
   - shows the Knight Rider spinner while the worker runs
-  - replaces `BUFFER` with the generated command on success
+  - updates `BUFFER` with the generated result on success
 - Worker (`src/opencode_generate_command.py`):
   - sets `OPENCODE_CONFIG_DIR` for the opencode subprocess (default: `${plugin_dir}/opencode`)
   - runs `opencode run --format json` and parses NDJSON events
@@ -114,20 +118,23 @@ wait'0c' atinit'
 
 ## Usage
 
-Write a request preceded by `#` and press TAB. The plugin replaces your prompt with the generated command(s), ready to edit/run.
+Write a request preceded by `#` and press TAB. The plugin updates your prompt with generated command(s), ready to edit/run.
 
 - If the line does not start with `#`, TAB behaves as usual (your original widget is preserved).
-- The leading `#` (and surrounding whitespace) is stripped before sending the request to the agent.
+- Only the first line's `#` prefix is stripped.
+  Any extra lines in your prompt are kept and sent as context when you press TAB again.
 - Magic prefixes:
-  - `# <request><TAB>`: generate command(s) and replace the buffer.
-  - `#= <request><TAB>`: keep your request (normalized to `# <request>`) as a comment line above the generated command(s).
+  - `# <request><TAB>`: generate command(s). By default, the request stays above the generated output.
+  - `#+ <request><TAB>`: force persistence (keep your exact request line above the generated output).
+  - `#- <request><TAB>`: force non-persistence (replace the whole buffer with generated output only).
   - `#? <request><TAB>`: explanation mode; prints the explanation to the terminal via `Z_OC_TAB_EXPLAIN_PRINT_CMD` (default: `cat`).
     - It does not insert the explanation into the buffer.
     - If you configure it to use `bat`, make sure `bat` is installed and in `PATH`.
 
 ## Mini Demo
 
-Type each request line (starting with `#`) and press TAB. The plugin inserts the generated command into your prompt; it does not execute it.
+Type each request line (starting with `#`) and press TAB.
+The plugin inserts text into your prompt so you can review it; it does not execute anything.
 
 Demo clip:
 
@@ -136,20 +143,14 @@ Demo clip:
 <b>Example:</b> list commits in a SHA range (in chronological order):
 
 ```zsh
-# give me the git command to list in reverse order using rev-list the commits between 869b1373 and f1b8edd0
-
-# Generated command:
-
+# give me the git command to list (using rev-list) the commits between 869b1373 and f1b8edd0, oldest first
 git rev-list --reverse 869b1373..f1b8edd0
 ```
 
 <b>Example:</b> iterate over `fd` results and print resolved paths:
 
 ```zsh
-# give me a for-loop command to iterate over the result of `fd -e zsh`; as a dummy action, we print the full resolved path of these files.
-
-# Generated command:
-
+# give me a for-loop to iterate over `fd -e zsh`; print the resolved path for each file
 for file in $(fd -e zsh); do print "$(realpath "$file")"; done
 ```
 
@@ -163,6 +164,11 @@ To change them, update your `.zshrc` and reload your shell (`exec zsh`).
 For the best-looking "Knight Rider" fade effect, set the spinner background color to match your terminal background.
 
 ```zsh
+# Default behavior for plain `# ...` requests.
+# 1: keep the request line above the generated command(s) (default)
+# 0: replace the buffer with generated command(s)
+export Z_OC_TAB_PERSIST_DEFAULT='1'
+
 # Optional: attach to a running opencode server (warm-start)
 # NOTE: upstream currently does not support using --attach and --agent together.
 # Track: https://github.com/anomalyco/opencode/pull/11812
@@ -187,7 +193,7 @@ export Z_OC_TAB_SPINNER_BG_HEX='#24273A'
 
 # Explanation mode output command (printed to the terminal).
 # Use '{}' as the placeholder for the temporary file path.
-export Z_OC_TAB_EXPLAIN_PRINT_CMD='bat --plain --color=always --decorations=always --language markdown --paging=never {}'
+export Z_OC_TAB_EXPLAIN_PRINT_CMD='bat --plain --color=always --decorations=always --language=markdown --paging=never {}'
 ```
 
 How to pick the right color:
@@ -210,6 +216,10 @@ The plugin reads these environment variables at load time:
   - Enable debug behavior (internal).
 - `Z_OC_TAB_DEBUG_LOG` (default: `/tmp/zsh-opencode-tab.log`)
   - Path to append debug logs to when `Z_OC_TAB_DEBUG=1`.
+- `Z_OC_TAB_PERSIST_DEFAULT` (default: `1`)
+  - Default persistence for plain `# ...` requests.
+  - `1`: keep the request line above the generated output.
+  - `0`: replace the buffer with the generated output.
 - `Z_OC_TAB_EXPLAIN_PRINT_CMD` (default: `cat`)
   - Command used to print `#?` explanation output to the terminal.
   - Use `{}` as a placeholder for the temporary file path.
