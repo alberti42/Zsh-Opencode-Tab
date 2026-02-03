@@ -4,39 +4,58 @@
 
 # zsh-opencode-tab: a little AI magic in the terminal
 
-Turn natural language into a zsh command by pressing TAB.
+This is a zsh plugin that turns natural language into a zsh command by pressing TAB. It is fully compatible with the popular Oh My Zsh plugin framework. 
 
 It has two modes, each backed by a different prompt optimized for the job:
 
 - Generate: turns your request into zsh command(s).
 - Explain: answers in plain English and explains the command/workflow.
 
-It never executes anything. It only inserts text into your prompt so you can review/edit it and decide whether to run it.
+# How does it work?
+
+If you press TAB when your current command line starts with `#` (a comment), it treats that line as a request to an AI agent. It keeps your normal TAB completion in all other situations.
+
+- Calls `opencode run --format json` under the hood.
+- Inserts the generated shell command(s) back into your ZLE buffer (it does not execute them).
+
+It never executes anything! It only inserts text into your prompt, so you can review/edit it and decide whether to run it.
 
 Pick a mode with a simple prefix at the start of the line:
 
 - `# <request><TAB>` generate command(s) (default)
-- `#? <request><TAB>` explain
+- `#? <request><TAB>` provide an explanation to your question; you can in principle ask anything, but it is tailored to answer shell-type of questions.
 
 Generate-mode modifier:
 
 - `#= <request><TAB>` generate, and also persist your request as a comment above the generated command(s)
 
-This is an Oh My Zsh plugin that:
+<details>
+<summary><strong>Click to expand the TLDR section on how it works internally</strong></summary>
 
-- Keeps your normal TAB completion.
-- When your current command line starts with `#` (a comment), it treats that line as a request to an AI agent.
-- Calls `opencode run --format json`.
-- Inserts the generated shell command(s) back into your ZLE buffer (it does not execute them).
+- ZLE widget: intercepts TAB and triggers only on `# ...` lines.
+- Controller (`src/controller.zsh`):
+  - starts the worker process
+  - shows the Knight Rider spinner while the worker runs
+  - replaces `BUFFER` with the generated command on success
+- Worker (`src/opencode_generate_command.py`):
+  - sets `OPENCODE_CONFIG_DIR` for the opencode subprocess (default: `${plugin_dir}/opencode`)
+  - runs `opencode run --format json` and parses NDJSON events
+  - returns `sessionID<US>text` (US = ASCII Unit Separator, 0x1f) so the controller can split it; `sessionID` may be empty
+- Spinner (`src/spinner.zsh`): rendering-only; draws via `BUFFER` + `region_highlight`.
+</details>
 
 ## Requirements
 
-- zsh >= 5.1 (uses `EPOCHREALTIME`)
+- zsh >= 5.1
 - `python3`
 - `opencode` CLI in `PATH`
-- (Optional) an opencode server running for attach/warm-start mode
+- (Optional) an opencode server running on your machine or on your premises for attach/warm-start mode
 
-## Installation (Oh My Zsh)
+## Installation
+
+Note: the `export` configurations shown below are just an example. For a full range of options, see the section _Configuration_ down below.
+
+**Oh My Zsh:**
 
 1) Clone this repo into your custom plugins directory:
 
@@ -47,6 +66,10 @@ git clone <this-repo-url> "$ZSH_CUSTOM/plugins/zsh-opencode-tab"
 2) Add it to your `.zshrc`:
 
 ```zsh
+export \
+	Z_OC_TAB_OPENCODE_MODEL="anthropic/claude-3-5-haiku-latest" \
+  Z_OC_TAB_EXPLAIN_PRINT_CMD="bat --plain --color=always --decorations=always --language markdown --paging=never --language=markdown {}"'
+
 plugins+=(zsh-opencode-tab)
 ```
 
@@ -56,19 +79,29 @@ plugins+=(zsh-opencode-tab)
 exec zsh
 ```
 
-## Usage
+**Do-it-yourself:**
 
-1) Type a comment request:
+1) Clone this repo into your desired location (e.g., "$HOME/local/share/my-zsh-plugins")
+
+2) Source it from your `.zshrc`:
 
 ```zsh
-# find all large files in this directory
+Z_OC_TAB_OPENCODE_MODEL="anthropic/claude-3-5-haiku-latests"
+source "$HOME/local/share/my-zsh-plugins/zsh-opencode-tab/zsh-opencode-tab.plugin.zsh"
 ```
 
-2) Press TAB.
+**zinit:**
 
-3) The plugin replaces your buffer with the generated command(s), ready to edit/run.
+```zsh
+wait'0c' atinit'
+  export Z_OC_TAB_OPENCODE_MODEL="google/gemini-2.5-flash" \
+  Z_OC_TAB_EXPLAIN_PRINT_CMD="bat --plain --color=always --decorations=always --language markdown --paging=never --language=markdown {}"' \
+  $__local_plugin_path/zsh-opencode-tab
+```
 
-Notes:
+## Usage
+
+Write on your command line a prompt preceded by `#` and press TAB. The plugin replaces your buffer with the command(s) generated from your prompt, ready to edit/run.
 
 - If the line does not start with `#`, TAB behaves as usual (your original widget is preserved).
 - The leading `#` (and surrounding whitespace) is stripped before sending the request to the agent.
@@ -106,19 +139,6 @@ git rev-list --reverse 869b1373..f1b8edd0
 
 for file in $(fd -e zsh); do print "$(realpath "$file")"; done
 ```
-
-## How It Works
-
-- ZLE widget: intercepts TAB and triggers only on `# ...` lines.
-- Controller (`src/controller.zsh`):
-  - starts the worker process
-  - shows the Knight Rider spinner while the worker runs
-  - replaces `BUFFER` with the generated command on success
-- Worker (`src/opencode_generate_command.py`):
-  - sets `OPENCODE_CONFIG_DIR` for the opencode subprocess (default: `${plugin_dir}/opencode`)
-  - runs `opencode run --format json` and parses NDJSON events
-  - returns `sessionID<US>text` (US = ASCII Unit Separator, 0x1f) so the controller can split it; `sessionID` may be empty
-- Spinner (`src/spinner.zsh`): rendering-only; draws via `BUFFER` + `region_highlight`.
 
 ## Configuration
 
@@ -228,32 +248,38 @@ The plugin reads these environment variables at load time:
   - If set to `1`, deletes the created session via the server API after receiving the answer.
 
 - `Z_OC_TAB_OPENCODE_CONFIG_DIR` (default: `${plugin_dir}/opencode`)
-  - Sets `OPENCODE_CONFIG_DIR` for the opencode subprocess.
-  - Keep this separate from `OPENCODE_CONFIG_DIR` on purpose: users must opt-in explicitly if they want to point the plugin at their own opencode config.
-- `Z_OC_TAB_OPENCODE_GNU` (default: `1`)
-  - Passed through to the agent as `GNU=...` (no validation/clamping).
+  - Where this plugin looks for its agent/prompt files when it runs `opencode` in cold-start mode.
+  - This setting is ignored in warm-start mode, when you attach to a running opencode server.
+  - If on your system you already configured opencode official environment variable `OPENCODE_CONFIG_DIR`, a sensible configuration is `export Z_OC_TAB_OPENCODE_CONFIG_DIR=OPENCODE_CONFIG_DIR` to rely this variable. The name is kept separate so that you more flexibility in principle to choose different directories for each of them; though likely you will not want/need to.
+- `Z_OC_TAB_OPENCODE_GNU` (`0` or `1`; default: `1`)
+  - Passed to the agent whether to prefer GNU tools over macOS/freeBSD.
 
 </details>
 
 ## Agent + Prompt
 
-This plugin is built around an opencode agent that is optimized for generating zsh commands (and only zsh commands).
+This plugin ships with an opencode agent that is tuned for one job: turning your request into zsh commands.
 
 - Default agent: `shell_cmd_generator` (definition: `opencode/agents/shell_cmd_generator.md`).
 - Custom agents: set `Z_OC_TAB_OPENCODE_AGENT` to any primary agent name that opencode can resolve.
-- Custom prompts: point `Z_OC_TAB_OPENCODE_CONFIG_DIR` at your own opencode config directory and provide `agents/<agent>.md` with your preferred instruction set.
+- Custom prompts (cold start): point `Z_OC_TAB_OPENCODE_CONFIG_DIR` at your own opencode config directory and provide `agents/<agent>.md` with your preferred instruction set.
 
-Tip: when iterating on an agent prompt, develop in cold-start mode (leave `Z_OC_TAB_OPENCODE_ATTACH` empty when loading this plugin). In attach mode, agents are loaded only once when the opencode server starts, so prompt edits will not be picked up until you restart the server.
+Tip: when you are iterating on the agent prompt, use cold start (leave `Z_OC_TAB_OPENCODE_ATTACH` empty). It's the least confusing setup: you edit a file, reload your shell, and the next TAB uses it.
 
 ## Cold Start vs Attach Mode
 
-- Default (safe): do not attach; each TAB request uses the bundled agent via `OPENCODE_CONFIG_DIR=${plugin_dir}/opencode`.
-- Optional (fast): attach to a running opencode server to avoid warmup overhead.
-  - Current upstream limitation: `opencode run --attach ... --agent ...` is broken upstream, so attach mode cannot reliably select an agent until that PR lands.
-  - Track: https://github.com/anomalyco/opencode/pull/11812
-  - Once fixed: the agent must be available to the server at server start time (agents are not hot-loadable later).
-  - Practical implication: if you want to use a custom agent in attach mode, put the agent markdown file in a directory the opencode server can see *when it starts* (e.g. `~/.config/opencode/agents/`).
-    - If you want to use this plugin's bundled agent, copy `opencode/agents/shell_cmd_generator.md` into `~/.config/opencode/agents/` (or create your own `agents/<name>.md` there) and restart the server.
+- Cold start (default): simplest and most reliable.
+  - You do not run/attach to any server.
+  - Each TAB request starts `opencode` with this plugin's bundled config (`OPENCODE_CONFIG_DIR=${plugin_dir}/opencode`).
+
+- Attach mode (optional): faster if you already run an opencode backend server.
+  - Important mental model: the server decides which agents exist. This plugin cannot "upload" an agent to a running server.
+  - That means: if you want to use a custom agent while attached, the agent file must already be on disk in the server's config directory when the server starts.
+    - Typical location: `~/.config/opencode/agents/` (or `$XDG_CONFIG_HOME/opencode/agents/`).
+    - If you want the same agent this plugin ships with, copy `opencode/agents/shell_cmd_generator.md` into that directory (or write your own `agents/<name>.md`). Then restart the opencode server.
+  - Note: upstream currently has a limitation where `opencode run --attach ... --agent ...` may not reliably select the agent you request.
+    - Track: https://github.com/anomalyco/opencode/pull/11812
+    - If agent selection seems "ignored", switch back to cold start while you customize prompts.
 
 ## Troubleshooting
 
@@ -266,15 +292,7 @@ Tip: when iterating on an agent prompt, develop in cold-start mode (leave `Z_OC_
 
 ## Credits
 
-Idea inspired by `https://github.com/verlihirsh/zsh-opencode-plugin`. This plugin, `zsh-opencode-tab`, goes beyond the initial idea by providing:
-
-- Real agent support: a dedicated `shell_cmd_generator` agent with a well-crafted prompt format; you can override the agent name and point to your own opencode config.
-- Two operating modes: safe default cold-start (works out of the box) plus an optional attach-to-server mode for warm-start performance (documented with current upstream limitations).
-- Better UX: a polished "Knight Rider" progress bar animation while the agent works.
-- Plays nicely with your shell: keeps normal TAB completion and works with other TAB-binding plugins (e.g. fzf-tab).
-- Clean session hygiene: supports disposable sessions and auto-cleans them so you don't accumulate hundreds of useless sessions.
-- Fully configurable: customize animation look (colors/background/behavior) and opencode options (model/variant/logging/config dir, etc.) via `Z_OC_TAB_*` variables.
-- Solid engineering: fast lazy loading, clear namespacing for variables, and a robust worker/IPC design so the UI stays responsive.
+Idea inspired by `https://github.com/verlihirsh/zsh-opencode-plugin`.
 
 ## Author
 - **Author:** Andrea Alberti
