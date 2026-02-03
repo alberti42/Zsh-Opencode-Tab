@@ -6,6 +6,22 @@
 
 Turn natural language into a zsh command by pressing TAB.
 
+It has two modes, each backed by a different prompt optimized for the job:
+
+- Generate: turns your request into zsh command(s).
+- Explain: answers in plain English and explains the command/workflow.
+
+It never executes anything. It only inserts text into your prompt so you can review/edit it and decide whether to run it.
+
+Pick a mode with a simple prefix at the start of the line:
+
+- `# <request><TAB>` generate command(s) (default)
+- `#? <request><TAB>` explain
+
+Generate-mode modifier:
+
+- `#= <request><TAB>` generate, and also persist your request as a comment above the generated command(s)
+
 This is an Oh My Zsh plugin that:
 
 - Keeps your normal TAB completion.
@@ -57,8 +73,11 @@ Notes:
 - If the line does not start with `#`, TAB behaves as usual (your original widget is preserved).
 - The leading `#` (and surrounding whitespace) is stripped before sending the request to the agent.
 - Magic prefixes:
-  - `#=` keeps your request as a comment line above the generated command(s).
-  - `#?` asks for an explanation. By default it prints the explanation to the terminal.
+  - `# <request><TAB>`: generate command(s) and replace the buffer.
+  - `#= <request><TAB>`: keep your request (normalized to `# <request>`) as a comment line above the generated command(s).
+  - `#? <request><TAB>`: explanation mode; prints the explanation to the terminal via `Z_OC_TAB_EXPLAIN_PRINT_CMD` (default: `cat`).
+    - It does not insert the explanation into the buffer.
+    - If you configure it to use `bat`, make sure `bat` is installed and in `PATH`.
 
 ## Mini Demo
 
@@ -192,6 +211,8 @@ The plugin reads these environment variables at load time:
   - Attach to an existing server (warm-start). See notes below.
 - `Z_OC_TAB_OPENCODE_MODEL` (default: empty)
   - Model in `provider/model` form.
+  - Comprehensive list of providers/models: https://models.dev/
+  - Recommended: first try the model in a regular `opencode` session (outside this plugin) to confirm your provider credentials are set up and your account has credits/billing to use it.
 - `Z_OC_TAB_OPENCODE_AGENT` (default: `shell_cmd_generator`)
   - Agent name.
 - `Z_OC_TAB_OPENCODE_VARIANT` (default: empty)
@@ -231,6 +252,8 @@ Tip: when iterating on an agent prompt, develop in cold-start mode (leave `Z_OC_
   - Current upstream limitation: `opencode run --attach ... --agent ...` is broken upstream, so attach mode cannot reliably select an agent until that PR lands.
   - Track: https://github.com/anomalyco/opencode/pull/11812
   - Once fixed: the agent must be available to the server at server start time (agents are not hot-loadable later).
+  - Practical implication: if you want to use a custom agent in attach mode, put the agent markdown file in a directory the opencode server can see *when it starts* (e.g. `~/.config/opencode/agents/`).
+    - If you want to use this plugin's bundled agent, copy `opencode/agents/shell_cmd_generator.md` into `~/.config/opencode/agents/` (or create your own `agents/<name>.md` there) and restart the server.
 
 ## Troubleshooting
 
