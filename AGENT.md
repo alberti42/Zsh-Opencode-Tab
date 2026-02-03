@@ -40,7 +40,7 @@ This repo contains an Oh-My-Zsh plugin that turns a natural-language request int
 - Optional (fast): attach to a running opencode server to avoid warmup overhead.
   - Current upstream limitation: `opencode run --attach ... --agent ...` is broken upstream, so attach mode cannot reliably select an agent until that PR lands.
   - Track: https://github.com/anomalyco/opencode/pull/11812
-  - When attach mode becomes usable: the agent must be available to the server at server start time (agents are not hot-loadable later), so users must install `shell_cmd_generator` (or their chosen `Z_OC_TAB_OPENCODE_AGENT`) where the server can find it.
+- When attach mode becomes usable: agents must be available to the server at server start time (agents are not hot-loadable later), so users must install `shell_cmd_generator` / `shell_cmd_explainer` (or their chosen `Z_OC_TAB_OPENCODE_AGENT_GENERATOR` / `Z_OC_TAB_OPENCODE_AGENT_EXPLAINER`) where the server can find them.
 
 ### Worker -> Zsh Output Protocol
 

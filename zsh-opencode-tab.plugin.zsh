@@ -111,11 +111,21 @@ _zsh_opencode_tab[persist.default]=${Z_OC_TAB_PERSIST_DEFAULT:-1}
   _zsh_opencode_tab[opencode.attach]=${Z_OC_TAB_OPENCODE_ATTACH:-''}
 
   # Optional. Format: provider/model
+  #
+  # Model selection supports a shared default plus per-mode overrides:
+  # - Z_OC_TAB_OPENCODE_MODEL: sets both generator + explainer
+  # - Z_OC_TAB_OPENCODE_MODEL_GENERATOR: overrides generator only
+  # - Z_OC_TAB_OPENCODE_MODEL_EXPLAINER: overrides explainer only
   _zsh_opencode_tab[opencode.model]=${Z_OC_TAB_OPENCODE_MODEL:-''}
+  _zsh_opencode_tab[opencode.model.generator]=${Z_OC_TAB_OPENCODE_MODEL:-''}
+  _zsh_opencode_tab[opencode.model.explainer]=${Z_OC_TAB_OPENCODE_MODEL:-''}
+  [[ -n ${Z_OC_TAB_OPENCODE_MODEL_GENERATOR:-''} ]] && _zsh_opencode_tab[opencode.model.generator]=${Z_OC_TAB_OPENCODE_MODEL_GENERATOR}
+  [[ -n ${Z_OC_TAB_OPENCODE_MODEL_EXPLAINER:-''} ]] && _zsh_opencode_tab[opencode.model.explainer]=${Z_OC_TAB_OPENCODE_MODEL_EXPLAINER}
 
-  # Agent/variant are optional opencode knobs.
-  # Agent name resolved by opencode from OPENCODE_CONFIG_DIR/agents.
-  _zsh_opencode_tab[opencode.agent]=${Z_OC_TAB_OPENCODE_AGENT:-'shell_cmd_generator'}
+  # Agent selection: generator and explainer are distinct agents.
+  # Agent name is resolved by opencode from OPENCODE_CONFIG_DIR/agents.
+  _zsh_opencode_tab[opencode.agent.generator]=${Z_OC_TAB_OPENCODE_AGENT_GENERATOR:-'shell_cmd_generator'}
+  _zsh_opencode_tab[opencode.agent.explainer]=${Z_OC_TAB_OPENCODE_AGENT_EXPLAINER:-'shell_cmd_explainer'}
   _zsh_opencode_tab[opencode.variant]=${Z_OC_TAB_OPENCODE_VARIANT:-''}
 
   # Configure opencode's config directory (contains agents/, etc).

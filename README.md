@@ -293,8 +293,10 @@ The plugin reads these environment variables at load time:
   - Model in `provider/model` form.
   - Comprehensive list of providers/models: https://models.dev/
   - Recommended: first try the model in a regular `opencode` session (outside this plugin) to confirm your provider credentials are set up and your account has credits/billing to use it.
-- `Z_OC_TAB_OPENCODE_AGENT` (default: `shell_cmd_generator`)
-  - Agent name.
+- `Z_OC_TAB_OPENCODE_AGENT_GENERATOR` (default: `shell_cmd_generator`)
+  - Agent name for command generation.
+- `Z_OC_TAB_OPENCODE_AGENT_EXPLAINER` (default: `shell_cmd_explainer`)
+  - Agent name for explanation mode.
 - `Z_OC_TAB_OPENCODE_VARIANT` (default: empty)
   - Optional model variant.
 - `Z_OC_TAB_OPENCODE_TITLE` (default: `zsh shell assistant`)
@@ -318,10 +320,14 @@ The plugin reads these environment variables at load time:
 
 ## Agent + Prompt
 
-This plugin ships with an opencode agent that is tuned for one job: turning your request into zsh commands.
+This plugin bundles two agent definitions (prompt files) for opencode:
 
-- Default agent: `shell_cmd_generator` (definition: `opencode/agents/shell_cmd_generator.md`).
-- Custom agents: set `Z_OC_TAB_OPENCODE_AGENT` to any primary agent name that opencode can resolve.
+- One tuned for generating zsh command(s).
+- One tuned for explaining commands and shell workflows.
+
+- Default generator agent: `shell_cmd_generator` (definition: `opencode/agents/shell_cmd_generator.md`).
+- Default explainer agent: `shell_cmd_explainer` (definition: `opencode/agents/shell_cmd_explainer.md`).
+- Custom agents: set `Z_OC_TAB_OPENCODE_AGENT_GENERATOR` and/or `Z_OC_TAB_OPENCODE_AGENT_EXPLAINER`.
 - Custom prompts (cold start): point `Z_OC_TAB_OPENCODE_CONFIG_DIR` at your own opencode config directory and provide `agents/<agent>.md` with your preferred instruction set.
 
 Tip: when you are iterating on the agent prompt, use cold start (leave `Z_OC_TAB_OPENCODE_ATTACH` empty). It's the least confusing setup: you edit a file, reload your shell, and the next TAB uses it.
@@ -336,7 +342,9 @@ Tip: when you are iterating on the agent prompt, use cold start (leave `Z_OC_TAB
   - Important mental model: the server decides which agents exist. This plugin cannot "upload" an agent to a running server.
   - That means: if you want to use a custom agent while attached, the agent file must already be on disk in the server's config directory when the server starts.
     - Typical location: `~/.config/opencode/agents/` (or `$XDG_CONFIG_HOME/opencode/agents/`).
-    - If you want the same agent this plugin ships with, copy `opencode/agents/shell_cmd_generator.md` into that directory (or write your own `agents/<name>.md`). Then restart the opencode server.
+    - If you want the same agents this plugin ships with, copy both of these files into that directory, then restart the opencode server:
+      - `opencode/agents/shell_cmd_generator.md`
+      - `opencode/agents/shell_cmd_explainer.md`
   - Note: upstream currently has a limitation where `opencode run --attach ... --agent ...` may not reliably select the agent you request.
     - Track: https://github.com/anomalyco/opencode/pull/11812
     - If agent selection seems "ignored", switch back to cold start while you customize prompts.

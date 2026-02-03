@@ -139,6 +139,19 @@ _zsh_opencode_tab.run_with_spinner() {
       # Build the worker command with the current plugin configuration.
       {
         local script="${_zsh_opencode_tab[dir]}/src/opencode_generate_command.py"
+
+        # Select agent/model based on request kind.
+        # - command/persist: generator
+        # - explain: explainer
+        local agent_to_use model_to_use
+        if [[ "$kind" == "explain" ]]; then
+          agent_to_use=${_zsh_opencode_tab[opencode.agent.explainer]}
+          model_to_use=${_zsh_opencode_tab[opencode.model.explainer]}
+        else
+          agent_to_use=${_zsh_opencode_tab[opencode.agent.generator]}
+          model_to_use=${_zsh_opencode_tab[opencode.model.generator]}
+        fi
+
         local -a cmd
         cmd=(python3 "$script" \
           --user-request "$user_request" \
@@ -148,10 +161,10 @@ _zsh_opencode_tab.run_with_spinner() {
           --config-dir "${_zsh_opencode_tab[opencode.config_dir]}" \
           --backend "${_zsh_opencode_tab[opencode.attach]}" \
           --title "${_zsh_opencode_tab[opencode.title]}" \
-          --agent "${_zsh_opencode_tab[opencode.agent]}"
+          --agent "$agent_to_use"
         )
 
-        [[ -n ${_zsh_opencode_tab[opencode.model]} ]] && cmd+=(--model "${_zsh_opencode_tab[opencode.model]}")
+        [[ -n $model_to_use ]] && cmd+=(--model "$model_to_use")
         [[ -n ${_zsh_opencode_tab[opencode.variant]} ]] && cmd+=(--variant "${_zsh_opencode_tab[opencode.variant]}")
         [[ -n ${_zsh_opencode_tab[opencode.log_level]} ]] && cmd+=(--log-level "${_zsh_opencode_tab[opencode.log_level]}")
         (( ${_zsh_opencode_tab[opencode.print_logs]} )) && cmd+=(--print-logs)
