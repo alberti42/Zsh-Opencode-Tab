@@ -19,7 +19,7 @@ _zsh_opencode_tab.run_with_spinner() {
   fi
 
   # Inputs:
-  # - $1: request kind: command | keep | explain
+  # - $1: request kind: command | persist | explain
   # - $2: original cmdline (defaults to current $BUFFER)
   local kind=${1:-command}
   local cmdline=${2:-$BUFFER}
@@ -42,14 +42,29 @@ _zsh_opencode_tab.run_with_spinner() {
   _spinner_interval=${_zsh_opencode_tab[spinner.interval_s]}
   _spinner_message=${_zsh_opencode_tab[spinner.message]}
 
-  # Strip leading whitespace, then strip the magic prefix, then strip whitespace again.
-  local user_request=${cmdline##[[:space:]]#}
-  case "$kind" in
-    keep)    user_request=${user_request#\#=} ;;
-    explain) user_request=${user_request#\#\?} ;;
-    *)       user_request=${user_request#\#} ;;
-  esac
-  user_request=${user_request##[[:space:]]#}
+  # Parse magic only from the first line.
+  #
+  # - `header_line` may contain a magic prefix like '#', '#+', '#-', or '#?'.
+  # - We keep the *exact* prefix we strip (including surrounding whitespace) so
+  #   we can restore it verbatim later. This is future-proof if we add more
+  #   magic prefixes.
+  # - The rest of the buffer (previous draft / previous generated commands) is
+  #   passed verbatim to the agent as additional context.
+  local header_line=${cmdline%%$'\n'*}
+  local tail=${cmdline#"$header_line"}
+
+  local magic_prefix request_line
+  if [[ $header_line =~ '^([[:space:]]*#([+\-\?])?[[:space:]]*)(.*)$' ]]; then
+    magic_prefix=${match[1]}
+    request_line=${match[3]}
+  else
+    # Defensive fallback: should not happen because the widget only triggers on '#...'.
+    magic_prefix=""
+    request_line="$header_line"
+  fi
+
+  # Request payload = stripped request line + rest of buffer (verbatim).
+  local user_request="${request_line}${tail}"
 
   local mode=1
   [[ "$kind" == "explain" ]] && mode=2
@@ -304,8 +319,8 @@ _zsh_opencode_tab.run_with_spinner() {
     return 1
   fi
 
-  if [[ "$kind" == "keep" ]]; then
-    BUFFER="# $user_request"$'\n'"$text"
+  if [[ "$kind" == "persist" ]]; then
+    BUFFER="${magic_prefix}${request_line}"$'\n'"$text"
   elif [[ "$kind" == "explain" ]]; then
     # Restore user prompt before printing.
     BUFFER="$cmdline"
@@ -400,7 +415,7 @@ _zsh_opencode_tab.run_with_spinner() {
       autoload -Uz add-zsh-hook
       add-zsh-hook -d precmd _zsh_opencode_tab.explain.precmd 2>/dev/null
       add-zsh-hook precmd _zsh_opencode_tab.explain.precmd
-      BUFFER="# $user_request"
+      BUFFER="${magic_prefix}${request_line}"
       CURSOR=${#BUFFER}
       zle accept-line
 
