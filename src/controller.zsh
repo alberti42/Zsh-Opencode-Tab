@@ -521,24 +521,10 @@ _zsh_opencode_tab.delete_session_local() {
   fi
 
   local data_home=${XDG_DATA_HOME:-"$HOME/.local/share"}
-  local -a roots
-  roots=(
-    "$data_home/opencode/storage"
-    "$data_home/opencode/project/global/storage"
-  )
+  local root="$data_home/opencode/storage"
+  local session_file="$root/session/global/$session_id.json"
 
-  local root=""
-  local session_file=""
-  local r
-  for r in "${roots[@]}"; do
-    if [[ -f "$r/session/global/$session_id.json" ]]; then
-      root=$r
-      session_file="$r/session/global/$session_id.json"
-      break
-    fi
-  done
-
-  if [[ -z $root ]]; then
+  if [[ ! -f $session_file ]]; then
     local msg="zsh-opencode-tab: cold delete failed (cannot find session file for $session_id)"
     [[ -n $dbg_hint ]] && msg+="; $dbg_hint"
     zle -M "$msg"
