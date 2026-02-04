@@ -8,12 +8,59 @@ import shutil
 import sys
 import urllib.error
 import urllib.request
+from shlex import quote as sh_quote
 from subprocess import PIPE, Popen
 
 
 US = "\x1f"  # ASCII Unit Separator
 
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def _zsh_dollar_quote(s: str) -> str:
+    """Return a zsh-safe $'..' quoted string.
+
+    This is used for the debug-only "repro command" we emit back to zsh,
+    so users can copy/paste a single line that reconstructs the exact multi-line
+    prompt payload.
+    """
+
+    out: list[str] = []
+    for ch in s:
+        o = ord(ch)
+        if ch == "\\":
+            out.append("\\\\")
+        elif ch == "'":
+            out.append("\\'")
+        elif ch == "\n":
+            out.append("\\n")
+        elif ch == "\r":
+            out.append("\\r")
+        elif ch == "\t":
+            out.append("\\t")
+        elif o < 32 or o == 127:
+            out.append(f"\\x{o:02x}")
+        else:
+            out.append(ch)
+    return "$'" + "".join(out) + "'"
+
+
+def _build_repro_cmd(cmd: list[str], env: dict[str, str]) -> str:
+    """Build a copy/pasteable single-line command for debugging."""
+
+    prefix = ""
+    cfg = env.get("OPENCODE_CONFIG_DIR", "")
+    if cfg:
+        prefix = f"OPENCODE_CONFIG_DIR={sh_quote(cfg)} "
+
+    parts: list[str] = []
+    for i, a in enumerate(cmd):
+        # The final arg is the prompt payload (multi-line). Use $'..' quoting.
+        if i == len(cmd) - 1:
+            parts.append(_zsh_dollar_quote(a))
+        else:
+            parts.append(sh_quote(a))
+    return prefix + " ".join(parts)
 
 
 def _parse_json_events(text: str) -> tuple[str, str]:
@@ -132,23 +179,7 @@ def main() -> int:
         args.echo_prompt,
     )
 
-    if args.debug_dummy:
-        text = (args.debug_dummy_text or "").strip()
-
-        if not text:
-            if args.kind == "explain":
-                text = "This is a dummy explanation,\nwhich extends over two lines."
-            else:
-                text = "# This is a dummy command,\nls"
-
-        # Output protocol for the zsh controller: session_id + US + text + "\n"
-        sys.stdout.write(US + text + "\n")
-        return 0
-
-    opencode_bin = shutil.which("opencode")
-    if not opencode_bin:
-        sys.stderr.write("opencode not found in PATH\n")
-        return 1
+    opencode_bin = shutil.which("opencode") or "opencode"
 
     cmd = [opencode_bin, "run", "--format", "json"]
     if args.print_logs:
@@ -171,6 +202,28 @@ def main() -> int:
     if args.config_dir:
         env["OPENCODE_CONFIG_DIR"] = args.config_dir
 
+    # Debug-only: return the exact opencode invocation (including OPENCODE_CONFIG_DIR
+    # if set) so users can copy/paste and reproduce what the plugin ran.
+    repro_cmd = _build_repro_cmd(cmd, env)
+
+    if args.debug_dummy:
+        text = (args.debug_dummy_text or "").strip()
+
+        if not text:
+            if args.kind == "explain":
+                text = "This is a dummy explanation,\nwhich extends over two lines."
+            else:
+                text = "# This is a dummy command,\nls"
+
+        # Output protocol for the zsh controller:
+        # session_id + US + repro_cmd + US + text + "\n"
+        sys.stdout.write(US + repro_cmd + US + text + "\n")
+        return 0
+
+    if opencode_bin == "opencode" and not shutil.which("opencode"):
+        sys.stderr.write("opencode not found in PATH\n")
+        return 1
+
     p = Popen(cmd, stdout=PIPE, stderr=PIPE, text=True, env=env)
     out, _err = p.communicate()
 
@@ -185,12 +238,12 @@ def main() -> int:
         _delete_session(backend_url, session_id)
 
     # Output protocol for the zsh controller:
-    # - Always emit: session_id + US + text + "\n"
+    # - Always emit: session_id + US + repro_cmd + US + text + "\n"
     # - US is ASCII Unit Separator (0x1f), chosen because it's very unlikely to
     #   appear in normal shell commands.
-    # - session_id may be an empty string; today the zsh side does not use it,
-    #   but it is future-proof metadata (and a useful integrity signal).
-    sys.stdout.write((session_id or "") + US + text + "\n")
+    # - session_id may be empty.
+    # - repro_cmd is for debugging only (controller logs it when Z_OC_TAB_DEBUG=1).
+    sys.stdout.write((session_id or "") + US + repro_cmd + US + text + "\n")
     return 0
 
 
