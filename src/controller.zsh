@@ -69,7 +69,7 @@ _zsh_opencode_tab.run_with_spinner() {
     # Stop when we hit the delimiter line ("# ---"), which marks the start of
     # the agent context block.
     if [[ ${_lines[i]} == [[:space:]]#\#* ]]; then
-      if [[ ${_lines[i]} == [[:space:]]#\#[[:space:]]#---#[[:space:]]# ]]; then
+      if [[ ${_lines[i]} == [[:space:]]#\#[[:space:]]#---(-#)[[:space:]]# ]]; then
         break
       fi
       prompt_lines+=("${_lines[i]}")
@@ -84,7 +84,7 @@ _zsh_opencode_tab.run_with_spinner() {
   # lines) while still preventing generated comment lines from being parsed as
   # part of the user's prompt block on the next iteration.
   local delimiter_line=""
-  if (( i <= ${#_lines} )) && [[ ${_lines[i]} == [[:space:]]#\#[[:space:]]#---#[[:space:]]# ]]; then
+  if (( i <= ${#_lines} )) && [[ ${_lines[i]} == [[:space:]]#\#[[:space:]]#---(-#)[[:space:]]# ]]; then
     delimiter_line=${_lines[i]}
     (( i++ ))
   fi
