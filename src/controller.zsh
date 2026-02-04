@@ -295,27 +295,15 @@ _zsh_opencode_tab.run_with_spinner() {
   fi
 
   # Success: parse the python output and put the generated command into the buffer.
-  local output text session_id
+  local output text session_id repro_cmd rest
   output=$(<"$out")
   command rm -f -- "$out" 2>/dev/null
 
-  if (( ${_zsh_opencode_tab[debug]} )); then
-    local dbg_file=${_zsh_opencode_tab[debug_log]}
-    {
-      print -r -- "----- zsh-opencode-tab worker output -----"
-      print -r -- "timestamp=$(date)"
-      print -r -- "kind=$kind"
-      print -r -- "$output"
-      print -r -- "-----"
-    } >>| "$dbg_file" 2>/dev/null
-  fi
-
   # Output protocol from `src/opencode_generate_command.py`:
-  # - Always: session_id + US + text + "\n"
+  # - Always: session_id + US + repro_cmd + US + text + "\n"
   # - US is ASCII Unit Separator (0x1f). It's uncommon in normal text and
   #   therefore safe as a delimiter for arbitrary multi-line shell snippets.
-  # - session_id may be empty; we currently ignore it, but keep it for future
-  #   features and as a cheap integrity signal.
+  # - repro_cmd is for debugging only (logged when Z_OC_TAB_DEBUG=1).
   
   # The worker may emit a trailing newline after the payload.
   # Strip exactly one final newline so delimiter checks and slicing are stable.
@@ -326,9 +314,8 @@ _zsh_opencode_tab.run_with_spinner() {
   # model output to contain arbitrary newlines.
   local US=$'\x1f'
 
-  # Strict protocol: require the delimiter. No fallback parsing.
-  # If this triggers, the Python wrapper didn't follow the agreed output contract.
-  if [[ "$output" != *"$US"* ]]; then
+  # Strict protocol: require two delimiters.
+  if [[ "$output" != *"$US"*"$US"* ]]; then
     # Fail loudly but safely: restore the user's line and show an error in the
     # ZLE message area (avoid printing to the terminal during ZLE).
     BUFFER="$cmdline"
@@ -340,11 +327,29 @@ _zsh_opencode_tab.run_with_spinner() {
     return 1
   fi
 
-  # Split exactly once:
-  # - session_id: everything before US (may be empty)
-  # - text: everything after US (may be multi-line)
+  # Split exactly twice:
+  # - session_id: everything before first US (may be empty)
+  # - repro_cmd: everything between first and second US (single line)
+  # - text: everything after second US (may be multi-line)
   session_id=${output%%"$US"*}
-  text=${output#*"$US"}
+  rest=${output#*"$US"}
+  repro_cmd=${rest%%"$US"*}
+  text=${rest#*"$US"}
+
+  if (( ${_zsh_opencode_tab[debug]} )); then
+    local dbg_file=${_zsh_opencode_tab[debug_log]}
+    {
+      print -r -- "----- zsh-opencode-tab worker -----"
+      print -r -- "timestamp=$(date)"
+      print -r -- "kind=$kind"
+      print -r -- "session_id=$session_id"
+      print -r -- "repro_cmd:"
+      print -r -- "$repro_cmd"
+      print -r -- "text:"
+      print -r -- "$text"
+      print -r -- "-----"
+    } >>| "$dbg_file" 2>/dev/null
+  fi
   
   # Empty output means we have nothing meaningful to insert.
   if [[ -z ${text//[[:space:]]/} ]]; then
