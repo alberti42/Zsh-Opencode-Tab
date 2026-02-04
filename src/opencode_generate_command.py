@@ -45,16 +45,12 @@ def _zsh_dollar_quote(s: str) -> str:
     return "$'" + "".join(out) + "'"
 
 
-def _build_repro_cmd(cmd: list[str], env: dict[str, str], cwd: str) -> str:
+def _build_repro_cmd(cmd: list[str], cwd: str) -> str:
     """Build a copy/pasteable single-line command for debugging."""
 
     prefix = ""
     if cwd:
         prefix += f"cd {sh_quote(cwd)} && "
-
-    cfg = env.get("OPENCODE_CONFIG_DIR", "")
-    if cfg:
-        prefix += f"OPENCODE_CONFIG_DIR={sh_quote(cfg)} "
 
     parts: list[str] = []
     for i, a in enumerate(cmd):
@@ -105,8 +101,7 @@ def _parse_json_events(text: str) -> tuple[str, str]:
 
 
 def _render_prompt(user_request: str, ostype: str, gnu: str, echo_prompt: str) -> str:
-    # Keep this intentionally small and explicit. The agent definition lives in
-    # OPENCODE_CONFIG_DIR/agents/<agent>.md, loaded by opencode.
+    # Keep this intentionally small and explicit.
     echo_prompt = (echo_prompt or "").strip() or "0"
     return (
         "<user>\n"
@@ -145,7 +140,6 @@ def main() -> int:
     ap.add_argument("--gnu", default="1")
     ap.add_argument("--kind", default="command")
     ap.add_argument("--echo-prompt", default="0")
-    ap.add_argument("--config-dir", default="")
     ap.add_argument("--workdir", default="")
     ap.add_argument("--model", default="")
     ap.add_argument("--backend-url", default="")
@@ -206,12 +200,10 @@ def main() -> int:
     cmd.append(prompt)
 
     env = dict(os.environ)
-    if args.config_dir and run_mode != "attach":
-        env["OPENCODE_CONFIG_DIR"] = args.config_dir
 
-    # Debug-only: return the exact opencode invocation (including OPENCODE_CONFIG_DIR
-    # if set) so users can copy/paste and reproduce what the plugin ran.
-    repro_cmd = _build_repro_cmd(cmd, env, workdir)
+    # Debug-only: return the exact opencode invocation so users can copy/paste and
+    # reproduce what the plugin ran.
+    repro_cmd = _build_repro_cmd(cmd, workdir)
 
     if args.debug_dummy:
         text = (args.debug_dummy_text or "").strip()

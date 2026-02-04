@@ -113,7 +113,12 @@ _zsh_opencode_tab[persist.default]=${Z_OC_TAB_PERSIST_DEFAULT:-1}
   # Working directory for the `opencode` subprocess.
   # We default to a temp directory so opencode sessions are created in the global
   # workspace (not project-scoped when the user happens to be inside a git repo).
-  local default_workdir="${TMPDIR:-/tmp}/zsh-opencode-tab"
+  local default_workdir
+  if [[ -n ${XDG_DATA_HOME:-} ]]; then
+    default_workdir="${XDG_DATA_HOME}/zsh-opencode-tab"
+  else
+    default_workdir="${TMPDIR:-/tmp}/zsh-opencode-tab"
+  fi
   _zsh_opencode_tab[opencode.workdir]="${Z_OC_TAB_OPENCODE_WORKDIR:-$default_workdir}"
 
   # How to run opencode:
@@ -134,16 +139,11 @@ _zsh_opencode_tab[persist.default]=${Z_OC_TAB_PERSIST_DEFAULT:-1}
   [[ -n ${Z_OC_TAB_OPENCODE_MODEL_EXPLAINER:-''} ]] && _zsh_opencode_tab[opencode.model.explainer]=${Z_OC_TAB_OPENCODE_MODEL_EXPLAINER}
 
   # Agent selection: generator and explainer are distinct agents.
-  # Agent name is resolved by opencode from OPENCODE_CONFIG_DIR/agents.
+  # In cold mode, this plugin ensures its bundled agents exist in:
+  #   ${Z_OC_TAB_OPENCODE_WORKDIR:-$default_workdir}/.opencode/agents/
   _zsh_opencode_tab[opencode.agent.generator]=${Z_OC_TAB_OPENCODE_AGENT_GENERATOR:-'shell_cmd_generator'}
   _zsh_opencode_tab[opencode.agent.explainer]=${Z_OC_TAB_OPENCODE_AGENT_EXPLAINER:-'shell_cmd_explainer'}
   _zsh_opencode_tab[opencode.variant]=${Z_OC_TAB_OPENCODE_VARIANT:-''}
-
-  # Configure opencode's config directory (contains agents/, etc).
-  # Intentionally named differently than OPENCODE_CONFIG_DIR so users must opt-in
-  # explicitly if they want to point this plugin at their own config.
-  local default_config_dir="${_zsh_opencode_tab[dir]}/opencode"
-  _zsh_opencode_tab[opencode.config_dir]="${Z_OC_TAB_OPENCODE_CONFIG_DIR:-$default_config_dir}"
 
   # "GNU" is passed as opaque config to the agent (no validation/clamping here).
   # Valid values are conventionally 0/1, but we trust user configuration.

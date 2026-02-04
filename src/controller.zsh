@@ -163,6 +163,14 @@ _zsh_opencode_tab.run_with_spinner() {
       {
         local script="${_zsh_opencode_tab[dir]}/src/opencode_generate_command.py"
         local run_mode=${_zsh_opencode_tab[opencode.run_mode]}
+        local workdir=${_zsh_opencode_tab[opencode.workdir]}
+
+        # Ensure the bundled agents exist in the workdir.
+        # We overwrite them to make plugin upgrades deterministic.
+        local agents_dst="${workdir}/.opencode/agents"
+        command mkdir -p -- "$agents_dst"
+        command cp -f -- "${_zsh_opencode_tab[dir]}/opencode/agents/shell_cmd_generator.md" "$agents_dst/shell_cmd_generator.md"
+        command cp -f -- "${_zsh_opencode_tab[dir]}/opencode/agents/shell_cmd_explainer.md" "$agents_dst/shell_cmd_explainer.md"
 
         # Select agent/model based on request kind.
         # - command/persist: generator
@@ -183,16 +191,12 @@ _zsh_opencode_tab.run_with_spinner() {
           --gnu "${_zsh_opencode_tab[opencode.gnu]}" \
           --kind "$kind" \
           --echo-prompt "$echo_prompt" \
-          --workdir "${_zsh_opencode_tab[opencode.workdir]}" \
+          --workdir "$workdir" \
           --backend-url "${_zsh_opencode_tab[opencode.backend_url]}" \
           --run-mode "$run_mode" \
           --title "${_zsh_opencode_tab[opencode.title]}" \
           --agent "$agent_to_use"
         )
-
-        # Only cold-start uses OPENCODE_CONFIG_DIR; in attach mode the server owns
-        # config/agents.
-        [[ "$run_mode" == "cold" ]] && cmd+=(--config-dir "${_zsh_opencode_tab[opencode.config_dir]}")
 
         [[ -n $model_to_use ]] && cmd+=(--model "$model_to_use")
         [[ -n ${_zsh_opencode_tab[opencode.variant]} ]] && cmd+=(--variant "${_zsh_opencode_tab[opencode.variant]}")
@@ -341,20 +345,21 @@ _zsh_opencode_tab.run_with_spinner() {
   repro_cmd=${rest%%"$US"*}
   agent_reply=${rest#*"$US"}
 
-  if (( ${_zsh_opencode_tab[debug]} )); then
-    local dbg_file=${_zsh_opencode_tab[debug_log]}
-    {
-      print -r -- "----- zsh-opencode-tab worker -----"
-      print -r -- "timestamp=$(date)"
-      print -r -- "kind=$kind"
-      print -r -- "session_id=$session_id"
-      print -r -- "repro_cmd:"
-      print -r -- "$repro_cmd"
-      print -r -- "agent_reply:"
-      print -r -- "$agent_reply"
-      print -r -- "-----"
-    } >>| "$dbg_file" 2>/dev/null
-  fi
+      if (( ${_zsh_opencode_tab[debug]} )); then
+        local dbg_file=${_zsh_opencode_tab[debug_log]}
+        {
+          print -r -- "----- zsh-opencode-tab worker -----"
+          print -r -- "timestamp=$(date)"
+          print -r -- "kind=$kind"
+          print -r -- "workdir=${_zsh_opencode_tab[opencode.workdir]}"
+          print -r -- "session_id=$session_id"
+          print -r -- "repro_cmd:"
+          print -r -- "$repro_cmd"
+          print -r -- "agent_reply:"
+          print -r -- "$agent_reply"
+          print -r -- "-----"
+        } >>| "$dbg_file" 2>/dev/null
+      fi
   
   # Empty output means we have nothing meaningful to insert.
   if [[ -z ${agent_reply//[[:space:]]/} ]]; then

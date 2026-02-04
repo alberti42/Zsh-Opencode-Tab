@@ -89,9 +89,8 @@ Still safe: it never runs anything for you.
   - shows the Knight Rider spinner while the worker runs
   - updates `BUFFER` with the generated result on success
 - Worker (`src/opencode_generate_command.py`):
-  - sets `OPENCODE_CONFIG_DIR` for the opencode subprocess (default: `${plugin_dir}/opencode`)
   - runs `opencode run --format json` and parses NDJSON events
-  - returns `sessionID<US>text` (US = ASCII Unit Separator, 0x1f) so the controller can split it; `sessionID` may be empty
+  - returns `sessionID<US>repro_cmd<US>agent_reply` (US = ASCII Unit Separator, 0x1f) so the controller can split it
 - Spinner (`src/spinner.zsh`): rendering-only; draws via `BUFFER` + `region_highlight`.
 </details>
 
@@ -303,9 +302,11 @@ The plugin reads these environment variables at load time:
  - `Z_OC_TAB_OPENCODE_BACKEND_URL` (default: empty)
    - URL of your opencode server.
    - Used for attach mode and for deleting sessions.
- - `Z_OC_TAB_OPENCODE_WORKDIR` (default: `${TMPDIR:-/tmp}/zsh-opencode-tab`)
+ - `Z_OC_TAB_OPENCODE_WORKDIR` (default: `$XDG_DATA_HOME/zsh-opencode-tab`)
    - Working directory used for the `opencode` subprocess.
-   - This defaults to a temp directory so sessions are created in the global workspace (not inside whatever git repo you happen to be in).
+   - If `XDG_DATA_HOME` is empty, it falls back to `${TMPDIR:-/tmp}/zsh-opencode-tab`.
+   - The plugin keeps sessions in the global workspace (not inside whatever git repo you happen to be in).
+   - The plugin writes its two bundled agents into `${Z_OC_TAB_OPENCODE_WORKDIR}/.opencode/agents/`.
   - `Z_OC_TAB_OPENCODE_RUN_MODE` (default: `cold`)
     - `cold`: run `opencode run` locally (no server attach).
     - `attach`: run `opencode run --attach <backend_url>`.
@@ -335,10 +336,6 @@ The plugin reads these environment variables at load time:
   - If set to `1`, deletes the created session via the server API after receiving the answer.
   - Requires `Z_OC_TAB_OPENCODE_BACKEND_URL` to be set (otherwise you'll see a warning and sessions will be kept).
 
-- `Z_OC_TAB_OPENCODE_CONFIG_DIR` (default: `${plugin_dir}/opencode`)
-  - Where this plugin looks for its agent/prompt files when it runs `opencode` in cold-start mode.
-  - This setting is ignored in warm-start mode, when you attach to a running opencode server.
-  - If on your system you already configured opencode official environment variable `OPENCODE_CONFIG_DIR`, a sensible configuration is `export Z_OC_TAB_OPENCODE_CONFIG_DIR=OPENCODE_CONFIG_DIR` to rely this variable. The name is kept separate so that you more flexibility in principle to choose different directories for each of them; though likely you will not want/need to.
 - `Z_OC_TAB_OPENCODE_GNU` (`0` or `1`; default: `1`)
   - Passed to the agent whether to prefer GNU tools over macOS/freeBSD.
 
@@ -354,7 +351,7 @@ This plugin bundles two agent definitions (prompt files) for opencode:
 - Default generator agent: `shell_cmd_generator` (definition: `opencode/agents/shell_cmd_generator.md`).
 - Default explainer agent: `shell_cmd_explainer` (definition: `opencode/agents/shell_cmd_explainer.md`).
 - Custom agents: set `Z_OC_TAB_OPENCODE_AGENT_GENERATOR` and/or `Z_OC_TAB_OPENCODE_AGENT_EXPLAINER`.
-- Custom prompts (cold start): point `Z_OC_TAB_OPENCODE_CONFIG_DIR` at your own opencode config directory and provide `agents/<agent>.md` with your preferred instruction set.
+- Custom prompts: copy the agent file under `${Z_OC_TAB_OPENCODE_WORKDIR}/.opencode/agents/` to a new filename and point the plugin at it using `Z_OC_TAB_OPENCODE_AGENT_GENERATOR` and `Z_OC_TAB_OPENCODE_AGENT_EXPLAINER`. Note that the plugin overwrites its own bundled filenames `shell_cmd_generator.md` and `shell_cmd_explainer.md` to keep upgrades deterministic; thus, avoid modifying the bundled agents.
 
 Tip: when you are iterating on the agent prompt, use cold start (`Z_OC_TAB_OPENCODE_RUN_MODE=cold`). It's the least confusing setup: you edit a file, reload your shell, and the next TAB uses it.
 
@@ -362,7 +359,7 @@ Tip: when you are iterating on the agent prompt, use cold start (`Z_OC_TAB_OPENC
 
 - Cold start (default): simplest and most reliable.
   - You do not run/attach to any server.
-  - Each TAB request starts `opencode` with this plugin's bundled config (`OPENCODE_CONFIG_DIR=${plugin_dir}/opencode`).
+  - Each TAB request runs `opencode` from `Z_OC_TAB_OPENCODE_WORKDIR`, which keeps sessions in the global workspace.
 
 - Attach mode (optional): faster if you already run an opencode backend server.
   - Important mental model: the server decides which agents exist. This plugin cannot "upload" an agent to a running server.
