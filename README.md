@@ -212,7 +212,7 @@ export Z_OC_TAB_PERSIST_DEFAULT='1'
 # Backend server URL (optional).
 # Used for:
 # - attach mode (warm-start), if you want it
-# - deleting sessions when Z_OC_TAB_OPENCODE_DELETE_SESSION=1
+# - deleting sessions in attach mode
 export Z_OC_TAB_OPENCODE_BACKEND_URL=''
 
 # How to run opencode:
@@ -248,7 +248,7 @@ How to pick the right color:
 
 ### Advanced: All Customizable Settings
 
-Most people never need these. They are here if you want to fine-tune the feel of the spinner (speed, colors, fading), control how opencode is invoked (model, logging), or point the plugin at your own opencode config directory.
+Most people never need these. They are here if you want to fine-tune the feel of the spinner (speed, colors, fading), or control how opencode is invoked (model, logging).
 
 <details>
 <summary><strong>Click to expand the full list</strong></summary>
@@ -303,7 +303,7 @@ The plugin reads these environment variables at load time:
 
  - `Z_OC_TAB_OPENCODE_BACKEND_URL` (default: empty)
    - URL of your opencode server.
-   - Used for attach mode and for deleting sessions.
+    - Used for attach mode.
  - `Z_OC_TAB_OPENCODE_WORKDIR` (default: `$XDG_DATA_HOME/zsh-opencode-tab`)
    - Working directory used for the `opencode` subprocess.
    - If `XDG_DATA_HOME` is empty, it falls back to `${TMPDIR:-/tmp}/zsh-opencode-tab`.
@@ -355,7 +355,7 @@ This plugin bundles two agent definitions (prompt files) for opencode:
 - Default generator agent: `shell_cmd_generator` (definition: `opencode/agents/shell_cmd_generator.md`).
 - Default explainer agent: `shell_cmd_explainer` (definition: `opencode/agents/shell_cmd_explainer.md`).
 - Custom agents: set `Z_OC_TAB_OPENCODE_AGENT_GENERATOR` and/or `Z_OC_TAB_OPENCODE_AGENT_EXPLAINER`.
-- Custom prompts: copy the agent file under `${Z_OC_TAB_OPENCODE_WORKDIR}/.opencode/agents/` to a new filename and point the plugin at it using `Z_OC_TAB_OPENCODE_AGENT_GENERATOR` and `Z_OC_TAB_OPENCODE_AGENT_EXPLAINER`. Note that the plugin overwrites its own bundled filenames `shell_cmd_generator.md` and `shell_cmd_explainer.md` to keep upgrades deterministic; thus, avoid modifying the bundled agents.
+- Custom prompts: copy the agent file under `${Z_OC_TAB_OPENCODE_WORKDIR}/.opencode/agents/` to a new filename and select it using `Z_OC_TAB_OPENCODE_AGENT_GENERATOR` and `Z_OC_TAB_OPENCODE_AGENT_EXPLAINER`. Note that the plugin overwrites its own bundled filenames `shell_cmd_generator.md` and `shell_cmd_explainer.md` to keep upgrades deterministic; thus, avoid modifying the bundled agents.
 
 Tip: when you are iterating on the agent prompt, use cold start (`Z_OC_TAB_OPENCODE_RUN_MODE=cold`). It's the least confusing setup: you edit a file, reload your shell, and the next TAB uses it.
 
