@@ -212,7 +212,7 @@ export Z_OC_TAB_PERSIST_DEFAULT='1'
 # Backend server URL (optional).
 # Used for:
 # - attach mode (warm-start), if you want it
-# - deleting sessions in attach mode
+# - deleting sessions in attach mode (cold mode deletes locally)
 export Z_OC_TAB_OPENCODE_BACKEND_URL=''
 
 # How to run opencode:
@@ -365,16 +365,16 @@ Tip: when you are iterating on the agent prompt, use cold start (`Z_OC_TAB_OPENC
   - You do not run/attach to any server.
   - Each TAB request runs `opencode` from `Z_OC_TAB_OPENCODE_WORKDIR`, which keeps sessions in the global workspace.
 
-- Attach mode (optional): faster if you already run an opencode backend server.
-  - Important mental model: the server decides which agents exist. This plugin cannot "upload" an agent to a running server.
-  - That means: if you want to use a custom agent while attached, the agent file must already be on disk in the server's config directory when the server starts.
-    - Typical location: `~/.config/opencode/agents/` (or `$XDG_CONFIG_HOME/opencode/agents/`).
-    - If you want the same agents this plugin ships with, copy both of these files into that directory, then restart the opencode server:
-      - `opencode/agents/shell_cmd_generator.md`
-      - `opencode/agents/shell_cmd_explainer.md`
-  - Note: upstream currently has a limitation where `opencode run --attach ... --agent ...` may not reliably select the agent you request.
-    - Track: https://github.com/anomalyco/opencode/pull/11812
-    - If agent selection seems "ignored", switch back to cold start while you customize prompts.
+- Attach mode (optional): same experience, less startup overhead.
+  - Run an opencode server and set:
+    - `Z_OC_TAB_OPENCODE_RUN_MODE='attach'`
+    - `Z_OC_TAB_OPENCODE_BACKEND_URL='http://127.0.0.1:4096'`
+  - The plugin already keeps its two agent files under `${Z_OC_TAB_OPENCODE_WORKDIR}/.opencode/agents/`, and attach mode can use those too.
+
+- Known upstream rough edges (so you're not surprised):
+  - Agent selection in attach mode can be unreliable (`--agent` may be ignored): https://github.com/anomalyco/opencode/pull/11812
+  - Password-protected server is currently buggy upstream: https://github.com/anomalyco/opencode/pull/9095
+  - If either bites you, switch back to cold start.
 
 ## Troubleshooting
 
