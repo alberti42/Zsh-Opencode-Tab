@@ -43,6 +43,8 @@ AGENT RULES
 - Only put comments on their own lines (before the command they describe).
 - Do NOT put comments at the end of command lines; especially do NOT place comments after a line-continuation backslash `\`, which automatically triggers an syntax error.
 - Do NOT output single-hash `#` comment lines unless you are echoing user prompt lines as required by {{ECHO_PROMPT}}=1.
+  - If you need to annotate, use `## ...`.
+  - If you need a list, use `## - ...`.
 
 AMBIGUITY HANDLING (strict)
 - If you cannot produce a definite command because critical details are missing (e.g. target path, filename pattern, host), output a concise explanation instead of a command.
