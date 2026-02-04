@@ -44,14 +44,14 @@ Pick a prefix:
 - `#- <request><TAB>` force non-persistence (replace the buffer with the generated command)
 - `#? <question><TAB>` explanation mode; prints an answer to your terminal (does not edit your prompt)
 
-The persistence behavior is what makes iteration feel nice: edit the first line and press TAB again.
+The persistence behavior is what makes iteration feel nice: keep your draft in the prompt and press TAB again.
 
 ## Pro Tip: Iterate In Place
 
 When you use persistence, your prompt becomes a tiny scratchpad. You're not "chatting". You're drafting a command.
 
 - First TAB gets you a rough draft.
-- Next TAB is a revision pass: you edit the first line, keep the old draft underneath, and ask for a tweak.
+- Next TAB is a revision pass: you tweak your notes (add another `# ...` line, or edit an existing one) and press TAB again.
 - Because the old draft stays in the buffer, the agent can refine it instead of reinventing it.
 
 That means you can do this:
@@ -62,7 +62,7 @@ That means you can do this:
 #+ list all .py files under this folder, one per line<TAB>
 ```
 
-2) Refine the request and press TAB again (you can edit the first line or add a new one at the bottom):
+2) Refine the request and press TAB again (add another `# ...` line anywhere you like):
 
 ```zsh
 # but exclude files with _test_ in the filename<TAB>
@@ -152,15 +152,21 @@ wait'0c' atinit'
 Write a request preceded by `#` and press TAB. The plugin updates your prompt with generated command(s), ready to edit/run.
 
 - If the line does not start with `#`, TAB behaves as usual (your original widget is preserved).
-- Only the first line's `#` prefix is stripped.
-  Any extra lines in your prompt are kept and sent as context when you press TAB again.
+- When you press TAB, the generator agent receives your whole prompt buffer (including any previous draft you kept there).
+  This is what makes iteration work: you can refine the request without losing context.
 - Magic prefixes:
-  - `# <request><TAB>`: generate command(s). By default, the request stays above the generated output.
-  - `#+ <request><TAB>`: force persistence (keep your exact request line above the generated output).
-  - `#- <request><TAB>`: force non-persistence (replace the whole buffer with generated output only).
+  - `# <request><TAB>`: generate command(s). By default, your `# ...` prompt stays in the buffer above the output.
+  - `#+ <request><TAB>`: force persistence (always keep your `# ...` prompt lines).
+  - `#- <request><TAB>`: force non-persistence (return commands only; drop your `# ...` prompt lines).
   - `#? <request><TAB>`: explanation mode; prints the explanation to the terminal via `Z_OC_TAB_EXPLAIN_PRINT_CMD` (default: `cat`).
     - It does not insert the explanation into the buffer.
     - If you configure it to use `bat`, make sure `bat` is installed and in `PATH`.
+
+One small convention that makes iteration nice:
+
+- Lines that start with a single `#` are treated as *your* prompt notes.
+- If the agent needs to add notes, it uses `## ...` (double hash).
+  That makes it easy to tell what you wrote vs what the agent added.
 
 ## Mini Demo
 
@@ -293,6 +299,11 @@ The plugin reads these environment variables at load time:
   - Model in `provider/model` form.
   - Comprehensive list of providers/models: https://models.dev/
   - Recommended: first try the model in a regular `opencode` session (outside this plugin) to confirm your provider credentials are set up and your account has credits/billing to use it.
+  - This sets the model for both generation and explanation.
+- `Z_OC_TAB_OPENCODE_MODEL_GENERATOR` (default: empty)
+  - Optional: model override for command generation.
+- `Z_OC_TAB_OPENCODE_MODEL_EXPLAINER` (default: empty)
+  - Optional: model override for explanation mode.
 - `Z_OC_TAB_OPENCODE_AGENT_GENERATOR` (default: `shell_cmd_generator`)
   - Agent name for command generation.
 - `Z_OC_TAB_OPENCODE_AGENT_EXPLAINER` (default: `shell_cmd_explainer`)
