@@ -39,9 +39,7 @@ It only inserts text into your prompt.
 
 Pick a prefix:
 
-- `# <request><TAB>` generate command(s); by default your request stays above the result (unless you change `Z_OC_TAB_PERSIST_DEFAULT`)
-- `#+ <request><TAB>` force persistence (keep your request line above the generated command)
-- `#- <request><TAB>` force non-persistence (replace the buffer with the generated command)
+- `# <request><TAB>` generate command(s)
 - `#? <question><TAB>` explanation mode; prints an answer to your terminal (does not edit your prompt)
 
 The persistence behavior is what makes iteration feel nice: keep your draft in the prompt and press TAB again.
@@ -59,7 +57,7 @@ That means you can do this:
 1) Ask for a rough draft:
 
 ```zsh
-#+ list all .py files under this folder, one per line<TAB>
+# list all .py files under this folder, one per line<TAB>
 ```
 
 2) Refine the request and press TAB again (add another `# ...` line anywhere you like):
@@ -73,6 +71,11 @@ That means you can do this:
 ```zsh
 # now show line counts for each file and sort biggest first<TAB>
 ```
+
+If you ever want to override the default behavior:
+
+- Use `#+` to force persistence for a single request.
+- Use `#-` to force a "commands only" reply (no echoed `# ...` prompt lines).
 
 You can keep iterating until it looks right, then run it.
 Still safe: it never runs anything for you.
@@ -155,9 +158,8 @@ Write a request preceded by `#` and press TAB. The plugin updates your prompt wi
 - When you press TAB, the generator agent receives your whole prompt buffer (including any previous draft you kept there).
   This is what makes iteration work: you can refine the request without losing context.
 - Magic prefixes:
-  - `# <request><TAB>`: generate command(s). By default, your `# ...` prompt stays in the buffer above the output.
-  - `#+ <request><TAB>`: force persistence (always keep your `# ...` prompt lines).
-  - `#- <request><TAB>`: force non-persistence (return commands only; drop your `# ...` prompt lines).
+  - `# <request><TAB>`: generate command(s).
+    - By default, your `# ...` prompt stays in the buffer above the output.
   - `#? <request><TAB>`: explanation mode; prints the explanation to the terminal via `Z_OC_TAB_EXPLAIN_PRINT_CMD` (default: `cat`).
     - It does not insert the explanation into the buffer.
     - If you configure it to use `bat`, make sure `bat` is installed and in `PATH`.
