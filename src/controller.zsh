@@ -295,12 +295,12 @@ _zsh_opencode_tab.run_with_spinner() {
   fi
 
   # Success: parse the python output and put the generated command into the buffer.
-  local output text session_id repro_cmd rest
+  local output agent_reply session_id repro_cmd rest
   output=$(<"$out")
   command rm -f -- "$out" 2>/dev/null
 
   # Output protocol from `src/opencode_generate_command.py`:
-  # - Always: session_id + US + repro_cmd + US + text + "\n"
+  # - Always: session_id + US + repro_cmd + US + agent_reply + "\n"
   # - US is ASCII Unit Separator (0x1f). It's uncommon in normal text and
   #   therefore safe as a delimiter for arbitrary multi-line shell snippets.
   # - repro_cmd is for debugging only (logged when Z_OC_TAB_DEBUG=1).
@@ -330,11 +330,11 @@ _zsh_opencode_tab.run_with_spinner() {
   # Split exactly twice:
   # - session_id: everything before first US (may be empty)
   # - repro_cmd: everything between first and second US (single line)
-  # - text: everything after second US (may be multi-line)
+  # - agent_reply: everything after second US (may be multi-line)
   session_id=${output%%"$US"*}
   rest=${output#*"$US"}
   repro_cmd=${rest%%"$US"*}
-  text=${rest#*"$US"}
+  agent_reply=${rest#*"$US"}
 
   if (( ${_zsh_opencode_tab[debug]} )); then
     local dbg_file=${_zsh_opencode_tab[debug_log]}
@@ -345,14 +345,14 @@ _zsh_opencode_tab.run_with_spinner() {
       print -r -- "session_id=$session_id"
       print -r -- "repro_cmd:"
       print -r -- "$repro_cmd"
-      print -r -- "text:"
-      print -r -- "$text"
+      print -r -- "agent_reply:"
+      print -r -- "$agent_reply"
       print -r -- "-----"
     } >>| "$dbg_file" 2>/dev/null
   fi
   
   # Empty output means we have nothing meaningful to insert.
-  if [[ -z ${text//[[:space:]]/} ]]; then
+  if [[ -z ${agent_reply//[[:space:]]/} ]]; then
     BUFFER="$cmdline"
     CURSOR=${#BUFFER}
     zle -R
@@ -365,7 +365,7 @@ _zsh_opencode_tab.run_with_spinner() {
   if [[ "$kind" == "persist" ]]; then
     # Persist mode: the generator agent is responsible for echoing the user's
     # prompt lines (and may add its own notes using its own conventions).
-    BUFFER="$text"
+    BUFFER="$agent_reply"
   elif [[ "$kind" == "explain" ]]; then
     # Restore user prompt before printing.
     BUFFER="$cmdline"
@@ -381,7 +381,7 @@ _zsh_opencode_tab.run_with_spinner() {
       # Add a separation line between the prompt and the agent answer.
       # The extra newlines at the end ensure the prompt redraw does not end up
       # on the same line and visually overwrite the last line of output.
-      local explain_text=$'---\n'"$text"
+      local explain_text=$'---\n'"$agent_reply"
 
       local explain_file
       explain_file="$(mktemp -t zsh-opencode-tab.explain.XXXXXX)" || return 1
@@ -470,9 +470,9 @@ _zsh_opencode_tab.run_with_spinner() {
   else
     # Command mode: put the generated command(s) into the buffer. The user can
     # edit and run them by pressing Enter.
-    BUFFER="$text"
+    BUFFER="$agent_reply"
   fi
-  # Place the cursor at the end of the inserted text.
+  # Place the cursor at the end of the inserted reply.
   CURSOR=${#BUFFER}
   zle -R
   return 0
