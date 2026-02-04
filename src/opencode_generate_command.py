@@ -45,13 +45,16 @@ def _zsh_dollar_quote(s: str) -> str:
     return "$'" + "".join(out) + "'"
 
 
-def _build_repro_cmd(cmd: list[str], env: dict[str, str]) -> str:
+def _build_repro_cmd(cmd: list[str], env: dict[str, str], cwd: str) -> str:
     """Build a copy/pasteable single-line command for debugging."""
 
     prefix = ""
+    if cwd:
+        prefix += f"cd {sh_quote(cwd)} && "
+
     cfg = env.get("OPENCODE_CONFIG_DIR", "")
     if cfg:
-        prefix = f"OPENCODE_CONFIG_DIR={sh_quote(cfg)} "
+        prefix += f"OPENCODE_CONFIG_DIR={sh_quote(cfg)} "
 
     parts: list[str] = []
     for i, a in enumerate(cmd):
@@ -143,6 +146,7 @@ def main() -> int:
     ap.add_argument("--kind", default="command")
     ap.add_argument("--echo-prompt", default="0")
     ap.add_argument("--config-dir", default="")
+    ap.add_argument("--workdir", default="")
     ap.add_argument("--model", default="")
     ap.add_argument("--backend-url", default="")
     ap.add_argument("--run-mode", default="cold")
@@ -171,6 +175,9 @@ def main() -> int:
 
     backend_url = (args.backend_url or "").strip()
     run_mode = (args.run_mode or "").strip() or "cold"
+    workdir = (args.workdir or "").strip()
+    if not workdir:
+        workdir = os.path.join(os.environ.get("TMPDIR", "/tmp"), "zsh-opencode-tab")
 
     prompt = _render_prompt(
         args.user_request,
@@ -199,12 +206,12 @@ def main() -> int:
     cmd.append(prompt)
 
     env = dict(os.environ)
-    if args.config_dir:
+    if args.config_dir and run_mode != "attach":
         env["OPENCODE_CONFIG_DIR"] = args.config_dir
 
     # Debug-only: return the exact opencode invocation (including OPENCODE_CONFIG_DIR
     # if set) so users can copy/paste and reproduce what the plugin ran.
-    repro_cmd = _build_repro_cmd(cmd, env)
+    repro_cmd = _build_repro_cmd(cmd, env, workdir)
 
     if args.debug_dummy:
         text = (args.debug_dummy_text or "").strip()
@@ -224,7 +231,8 @@ def main() -> int:
         sys.stderr.write("opencode not found in PATH\n")
         return 1
 
-    p = Popen(cmd, stdout=PIPE, stderr=PIPE, text=True, env=env)
+    os.makedirs(workdir, exist_ok=True)
+    p = Popen(cmd, stdout=PIPE, stderr=PIPE, text=True, env=env, cwd=workdir)
     out, _err = p.communicate()
 
     # ANSI_RE.sub("", out ...): strips ANSI escape sequences
