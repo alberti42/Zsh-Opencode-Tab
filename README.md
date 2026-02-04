@@ -1,4 +1,8 @@
-# zsh-opencode-tab
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/5dae9c9f-5cfd-4b56-9037-aca644bf710a" alt="A little AI magic in the terminal" />
+</p>
+
+# zsh-opencode-tab: a little AI magic in the terminal
 
 Turn natural language into a zsh command by pressing TAB.
 
@@ -57,31 +61,27 @@ Notes:
 
 Type each request line (starting with `#`) and press TAB. The plugin inserts the generated command into your prompt; it does not execute it.
 
-Demo video: https://github.com/alberti42/zsh-opencode-tab/releases/download/1.0.0/demo.mov
+Demo clip:
 
-<video src="https://github.com/alberti42/zsh-opencode-tab/releases/download/1.0.0/demo.mov" controls muted playsinline></video>
+<https://github.com/user-attachments/assets/50318e0b-f945-4058-b446-2a04abbc8142>
 
-Example: list commits in a SHA range (in chronological order):
+<b>Example:</b> list commits in a SHA range (in chronological order):
 
 ```zsh
 # give me the git command to list in reverse order using rev-list the commits between 869b1373 and f1b8edd0
-```
 
-Generated command:
+# Generated command:
 
-```zsh
 git rev-list --reverse 869b1373..f1b8edd0
 ```
 
-Example: iterate over `fd` results and print resolved paths:
+<b>Example:</b> iterate over `fd` results and print resolved paths:
 
 ```zsh
 # give me a for-loop command to iterate over the result of `fd -e zsh`; as a dummy action, we print the full resolved path of these files.
-```
 
-Generated command:
+# Generated command:
 
-```zsh
 for file in $(fd -e zsh); do print "$(realpath "$file")"; done
 ```
 
@@ -119,7 +119,8 @@ export Z_OC_TAB_SPINNER_INTERVAL='0.03'
 export Z_OC_TAB_SPINNER_MESSAGE='Please wait for the agent ...'
 ```
 
-### Advanced: All Customizable Settings
+<details>
+<summary>Advanced: All Customizable Settings</summary>
 
 The plugin reads these environment variables at load time:
 
@@ -183,22 +184,15 @@ The plugin reads these environment variables at load time:
 - `Z_OC_TAB_OPENCODE_GNU` (default: `1`)
   - Passed through to the agent as `GNU=...` (no validation/clamping).
 
+</details>
+
 ## Agent + Prompt
 
-- Agent definition (used by opencode): `opencode/agents/shell_cmd_generator.md` (resolved via `OPENCODE_CONFIG_DIR`).
-- User prompt format passed to opencode by the worker:
+This plugin is built around an opencode agent that is optimized for generating zsh commands (and only zsh commands).
 
-```text
-<user>
-<config>
-OSTYPE=...
-GNU=...
-</config>
-<request>
-...
-</request>
-</user>
-```
+- Default agent: `shell_cmd_generator` (definition: `opencode/agents/shell_cmd_generator.md`).
+- Custom agents: set `Z_OC_TAB_OPENCODE_AGENT` to any primary agent name that opencode can resolve.
+- Custom prompts: point `Z_OC_TAB_OPENCODE_CONFIG_DIR` at your own opencode config directory and provide `agents/<agent>.md` with your preferred instruction set.
 
 ## Cold Start vs Attach Mode
 
