@@ -110,6 +110,12 @@ _zsh_opencode_tab[persist.default]=${Z_OC_TAB_PERSIST_DEFAULT:-1}
   # Backend server URL (optional): used for session deletion and attach-mode runs.
   _zsh_opencode_tab[opencode.backend_url]=${Z_OC_TAB_OPENCODE_BACKEND_URL:-''}
 
+  # Working directory for the `opencode` subprocess.
+  # We default to a temp directory so opencode sessions are created in the global
+  # workspace (not project-scoped when the user happens to be inside a git repo).
+  local default_workdir="${TMPDIR:-/tmp}/zsh-opencode-tab"
+  _zsh_opencode_tab[opencode.workdir]="${Z_OC_TAB_OPENCODE_WORKDIR:-$default_workdir}"
+
   # How to run opencode:
   # - cold (default): run `opencode run ...` (no server attach)
   # - attach: run `opencode run --attach <backend_url> ...`

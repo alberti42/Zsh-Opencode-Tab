@@ -45,9 +45,11 @@ This repo contains an Oh-My-Zsh plugin that turns a natural-language request int
 ### Worker -> Zsh Output Protocol
 
 - Implemented in `src/opencode_generate_command.py`, parsed in `src/controller.zsh`.
-- Format: `session_id + US + text + "\n"`
+- Format: `session_id + US + repro_cmd + US + agent_reply + "\n"`
   - `US` is ASCII Unit Separator (0x1f).
-  - `session_id` may be empty; today Zsh does not use it, but we keep it for future features and as a cheap integrity signal.
+  - `session_id` may be empty.
+  - `repro_cmd` is a copy/pasteable command line for debugging (only logged when `Z_OC_TAB_DEBUG=1`).
+  - `agent_reply` is inserted into `BUFFER` (or printed in explain mode).
 
 ### User Prompt Format (Worker -> Opencode)
 

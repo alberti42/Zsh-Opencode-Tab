@@ -162,6 +162,7 @@ _zsh_opencode_tab.run_with_spinner() {
       # Build the worker command with the current plugin configuration.
       {
         local script="${_zsh_opencode_tab[dir]}/src/opencode_generate_command.py"
+        local run_mode=${_zsh_opencode_tab[opencode.run_mode]}
 
         # Select agent/model based on request kind.
         # - command/persist: generator
@@ -182,12 +183,16 @@ _zsh_opencode_tab.run_with_spinner() {
           --gnu "${_zsh_opencode_tab[opencode.gnu]}" \
           --kind "$kind" \
           --echo-prompt "$echo_prompt" \
-          --config-dir "${_zsh_opencode_tab[opencode.config_dir]}" \
+          --workdir "${_zsh_opencode_tab[opencode.workdir]}" \
           --backend-url "${_zsh_opencode_tab[opencode.backend_url]}" \
-          --run-mode "${_zsh_opencode_tab[opencode.run_mode]}" \
+          --run-mode "$run_mode" \
           --title "${_zsh_opencode_tab[opencode.title]}" \
           --agent "$agent_to_use"
         )
+
+        # Only cold-start uses OPENCODE_CONFIG_DIR; in attach mode the server owns
+        # config/agents.
+        [[ "$run_mode" == "cold" ]] && cmd+=(--config-dir "${_zsh_opencode_tab[opencode.config_dir]}")
 
         [[ -n $model_to_use ]] && cmd+=(--model "$model_to_use")
         [[ -n ${_zsh_opencode_tab[opencode.variant]} ]] && cmd+=(--variant "${_zsh_opencode_tab[opencode.variant]}")

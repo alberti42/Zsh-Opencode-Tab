@@ -303,9 +303,12 @@ The plugin reads these environment variables at load time:
  - `Z_OC_TAB_OPENCODE_BACKEND_URL` (default: empty)
    - URL of your opencode server.
    - Used for attach mode and for deleting sessions.
- - `Z_OC_TAB_OPENCODE_RUN_MODE` (default: `cold`)
-   - `cold`: run `opencode run` locally (no server attach).
-   - `attach`: run `opencode run --attach <backend_url>`.
+ - `Z_OC_TAB_OPENCODE_WORKDIR` (default: `${TMPDIR:-/tmp}/zsh-opencode-tab`)
+   - Working directory used for the `opencode` subprocess.
+   - This defaults to a temp directory so sessions are created in the global workspace (not inside whatever git repo you happen to be in).
+  - `Z_OC_TAB_OPENCODE_RUN_MODE` (default: `cold`)
+    - `cold`: run `opencode run` locally (no server attach).
+    - `attach`: run `opencode run --attach <backend_url>`.
 - `Z_OC_TAB_OPENCODE_MODEL` (default: empty)
   - Model in `provider/model` form.
   - Comprehensive list of providers/models: https://models.dev/
