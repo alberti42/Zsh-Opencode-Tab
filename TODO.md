@@ -1,32 +1,31 @@
 # TODO
 
-## Magic Prefixes
+This file tracks remaining work items. It is intentionally short and technical.
 
-- [ ] Add prefix parsing in `src/zsh-opencode-tab.zsh` for `#`, `#=`, `#?`.
-- [ ] Keep fallback behavior intact for non-`#` buffers (delegate to original TAB widget).
+## Prompt Memory / Recall
 
-## `#=` Keep-Request Mode
+- [ ] Store the last used prompt buffer (verbatim) after a successful request.
+- [ ] (Optional) Ring buffer for recent prompts.
+- [ ] Add a recall widget + key binding (pick a key that works reliably across terminals).
 
-- [ ] Implement `#=` so the request line is preserved as a comment above the generated command(s).
-- [ ] Ensure the preserved line is normalized to `# <request>` (not `#=`).
+## Authenticated Backends (Optional)
 
-## `#?` Explain Mode (ZLE-safe)
+- [ ] Support deleting sessions when the opencode server is protected with HTTP basic auth.
+  - Add config for backend username/password (or reuse opencode env vars if reliable).
+  - Implement auth header for `DELETE /session/<id>`.
+  - Test end-to-end against a password-protected `opencode serve`.
 
-- [ ] Add mode flag to the worker request (e.g. `MODE=1|2`) and pass it from zsh -> python.
-- [ ] Update `opencode/agents/shell_cmd_generator.md` to define Mode 2 output rules (plain text explanation suitable for comment-wrapping).
-- [ ] Implement `#?` so the returned text is inserted into the buffer as a comment block:
-  - prefix every line with `# ` (empty line -> `#`).
-- [ ] Confirm no terminal output is printed during ZLE (no `/dev/tty` writes).
+## Manual Verification Checklist
 
-## Prompt Memory
-
-- [ ] Store `_zsh_opencode_tab[last_prompt]` on every successful trigger (`#`, `#=`, `#?`).
-- [ ] (Optional) Add a small in-memory ring buffer for recent prompts.
-- [ ] Decide and implement a recall widget + key binding (avoid Ctrl-Tab unless verified in target terminals).
-
-## Manual Verification
-
-- [ ] `ls /App<TAB>` still uses the original completion widget (e.g. fzf-tab).
-- [ ] `#=<request><TAB>` results in `# <request>` + generated command(s) below.
-- [ ] `#?<request><TAB>` results in a multi-line comment explanation block.
-- [ ] Cancellation (`Ctrl-C`) still interrupts the worker cleanly.
+- [x] Normal completion unchanged: `ls /App<TAB>` still uses the original completion widget.
+- [x] Generator modes:
+  - [x] `# <request><TAB>` honors `Z_OC_TAB_PERSIST_DEFAULT`.
+  - [x] `#+ <request><TAB>` persists (agent echoes user `# ...` lines).
+  - [x] `#- <request><TAB>` non-persists (agent does not echo user `# ...` lines).
+  - [x] Agent notes use `## ...` (never single `#` unless echoing user lines).
+- [x] Explain mode:
+  - [x] `#? <question><TAB>` prints to scrollback and returns a fresh prompt.
+- [x] Cancellation: `Ctrl-C` interrupts the worker cleanly.
+- [ ] Session deletion:
+  - [ ] With `Z_OC_TAB_OPENCODE_DELETE_SESSION=1` and `Z_OC_TAB_OPENCODE_BACKEND_URL` set, sessions are deleted.
+  - [x] If deletion is enabled but backend URL is empty, a clear warning is shown.
