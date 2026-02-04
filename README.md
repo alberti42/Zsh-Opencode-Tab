@@ -101,6 +101,8 @@ Still safe: it never runs anything for you.
 - `opencode` CLI in `PATH`
 - (Optional) an opencode server running on your machine or on your premises for attach/warm-start mode
 
+Note: this plugin targets macOS and Linux. If you use Windows, run it under WSL.
+
 ## Installation
 
 Note: the `export` configurations shown below are just examples. For the full list, see _Configuration_.
@@ -307,9 +309,10 @@ The plugin reads these environment variables at load time:
    - If `XDG_DATA_HOME` is empty, it falls back to `${TMPDIR:-/tmp}/zsh-opencode-tab`.
    - The plugin keeps sessions in the global workspace (not inside whatever git repo you happen to be in).
    - The plugin writes its two bundled agents into `${Z_OC_TAB_OPENCODE_WORKDIR}/.opencode/agents/`.
-  - `Z_OC_TAB_OPENCODE_RUN_MODE` (default: `cold`)
-    - `cold`: run `opencode run` locally (no server attach).
-    - `attach`: run `opencode run --attach <backend_url>`.
+ - `Z_OC_TAB_OPENCODE_RUN_MODE` (default: `cold`)
+   - `cold`: run `opencode run` locally (no server attach).
+   - `attach`: run `opencode run --attach <backend_url>`.
+   - If you set `attach` but leave `Z_OC_TAB_OPENCODE_BACKEND_URL` empty, the plugin falls back to `cold` and shows a warning.
 - `Z_OC_TAB_OPENCODE_MODEL` (default: empty)
   - Model in `provider/model` form.
   - Comprehensive list of providers/models: https://models.dev/
@@ -333,8 +336,9 @@ The plugin reads these environment variables at load time:
 - `Z_OC_TAB_OPENCODE_PRINT_LOGS` (default: `0`)
   - If set to `1`, passes `--print-logs`.
 - `Z_OC_TAB_OPENCODE_DELETE_SESSION` (default: `1`)
-  - If set to `1`, deletes the created session via the server API after receiving the answer.
-  - Requires `Z_OC_TAB_OPENCODE_BACKEND_URL` to be set (otherwise you'll see a warning and sessions will be kept).
+  - If set to `1`, deletes the created session after receiving the answer.
+  - In `attach` mode: deletes via the server API (requires `Z_OC_TAB_OPENCODE_BACKEND_URL`).
+  - In `cold` mode: deletes locally on disk (no server needed).
 
 - `Z_OC_TAB_OPENCODE_GNU` (`0` or `1`; default: `1`)
   - Passed to the agent whether to prefer GNU tools over macOS/freeBSD.

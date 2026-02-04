@@ -25,6 +25,16 @@ _zsh_opencode_tab.run_with_spinner() {
   local cmdline=${2:-$BUFFER}
   local -i cmd_cursor=${CURSOR:-0}
 
+  local run_mode=${_zsh_opencode_tab[opencode.run_mode]}
+  local backend_url=${_zsh_opencode_tab[opencode.backend_url]}
+
+  # If attach mode is requested but no backend URL is configured, fall back to
+  # cold mode (and warn loudly so it's not a silent behavior change).
+  if [[ "$run_mode" == "attach" ]] && [[ -z $backend_url ]]; then
+    zle -M "zsh-opencode-tab: attach mode requested, but Z_OC_TAB_OPENCODE_BACKEND_URL is empty (falling back to cold mode)"
+    run_mode=cold
+  fi
+
   # Prepare a short hint for error messages.
   local dbg_hint
   if (( ${_zsh_opencode_tab[debug]} )); then
@@ -36,12 +46,8 @@ _zsh_opencode_tab.run_with_spinner() {
   # Return immediately if the buffer was empty
   [[ -n $cmdline ]] || return 0
 
-  # If session deletion is enabled, we need a backend server URL.
-  # In cold mode we still run the request locally, but deletion happens via the
-  # server HTTP API. Failing silently here is confusing, so warn.
-  if (( ${_zsh_opencode_tab[opencode.delete_session]} )) && [[ -z ${_zsh_opencode_tab[opencode.backend_url]} ]]; then
-    zle -M "zsh-opencode-tab: delete-session is enabled, but Z_OC_TAB_OPENCODE_BACKEND_URL is empty (sessions cannot be deleted without connection to the backend server)"
-  fi
+  # Note: deletion warnings are handled implicitly by the attach-mode fallback
+  # above. In cold mode we delete locally and do not require a server.
   
   local _spinner_interval _spinner_render_mode _spinner_message _spinner_type
   local -a _spinner_frames
@@ -162,7 +168,7 @@ _zsh_opencode_tab.run_with_spinner() {
       # Build the worker command with the current plugin configuration.
       {
         local script="${_zsh_opencode_tab[dir]}/src/opencode_generate_command.py"
-        local run_mode=${_zsh_opencode_tab[opencode.run_mode]}
+        local worker_run_mode=$run_mode
         local workdir=${_zsh_opencode_tab[opencode.workdir]}
 
         # Ensure the bundled agents exist in the workdir.
@@ -193,7 +199,7 @@ _zsh_opencode_tab.run_with_spinner() {
           --echo-prompt "$echo_prompt" \
           --workdir "$workdir" \
           --backend-url "${_zsh_opencode_tab[opencode.backend_url]}" \
-          --run-mode "$run_mode" \
+          --run-mode "$worker_run_mode" \
           --title "${_zsh_opencode_tab[opencode.title]}" \
           --agent "$agent_to_use"
         )
@@ -202,7 +208,12 @@ _zsh_opencode_tab.run_with_spinner() {
         [[ -n ${_zsh_opencode_tab[opencode.variant]} ]] && cmd+=(--variant "${_zsh_opencode_tab[opencode.variant]}")
         [[ -n ${_zsh_opencode_tab[opencode.log_level]} ]] && cmd+=(--log-level "${_zsh_opencode_tab[opencode.log_level]}")
         (( ${_zsh_opencode_tab[opencode.print_logs]} )) && cmd+=(--print-logs)
-        (( ${_zsh_opencode_tab[opencode.delete_session]} )) && cmd+=(--delete-session)
+        if (( ${_zsh_opencode_tab[opencode.delete_session]} )); then
+          # Deletion strategy:
+          # - attach: opencode server owns sessions; worker calls the HTTP API.
+          # - cold: controller deletes local files after parsing session_id.
+          [[ "$worker_run_mode" == "attach" && -n ${_zsh_opencode_tab[opencode.backend_url]} ]] && cmd+=(--delete-session)
+        fi
         (( ${_zsh_opencode_tab[opencode.dummy]} )) && cmd+=(--debug-dummy)
         [[ -n ${_zsh_opencode_tab[opencode.dummy_text]} ]] && cmd+=(--debug-dummy-text "${_zsh_opencode_tab[opencode.dummy_text]}")
       }
@@ -360,6 +371,11 @@ _zsh_opencode_tab.run_with_spinner() {
           print -r -- "-----"
         } >>| "$dbg_file" 2>/dev/null
       fi
+
+  # Cold-mode session deletion: delete local files (no server needed).
+  if (( ${_zsh_opencode_tab[opencode.delete_session]} )) && [[ "$run_mode" == "cold" ]] && [[ -n $session_id ]]; then
+    _zsh_opencode_tab.delete_session_local "$session_id" "$dbg_hint"
+  fi
   
   # Empty output means we have nothing meaningful to insert.
   if [[ -z ${agent_reply//[[:space:]]/} ]]; then
@@ -485,6 +501,63 @@ _zsh_opencode_tab.run_with_spinner() {
   # Place the cursor at the end of the inserted reply.
   CURSOR=${#BUFFER}
   zle -R
+  return 0
+}
+
+_zsh_opencode_tab.delete_session_local() {
+  emulate -L zsh
+  setopt localoptions extendedglob
+
+  local session_id=${1:-}
+  local dbg_hint=${2:-}
+
+  session_id=${session_id##[[:space:]]#}
+  session_id=${session_id%%[[:space:]]#}
+
+  # Basic sanity guard: avoid path injection.
+  if [[ -z $session_id || $session_id != ses_* || $session_id == */* ]]; then
+    zle -M "zsh-opencode-tab: cold delete failed (invalid session id: ${session_id:-<empty>})"
+    return 1
+  fi
+
+  local data_home=${XDG_DATA_HOME:-"$HOME/.local/share"}
+  local -a roots
+  roots=(
+    "$data_home/opencode/storage"
+    "$data_home/opencode/project/global/storage"
+  )
+
+  local root=""
+  local session_file=""
+  local r
+  for r in "${roots[@]}"; do
+    if [[ -f "$r/session/global/$session_id.json" ]]; then
+      root=$r
+      session_file="$r/session/global/$session_id.json"
+      break
+    fi
+  done
+
+  if [[ -z $root ]]; then
+    local msg="zsh-opencode-tab: cold delete failed (cannot find session file for $session_id)"
+    [[ -n $dbg_hint ]] && msg+="; $dbg_hint"
+    zle -M "$msg"
+    return 1
+  fi
+
+  command rm -rf -- "$root/message/$session_id" 2>/dev/null
+  command rm -f -- "$session_file" 2>/dev/null
+  command rm -f -- "$root/session_diff/$session_id.json" 2>/dev/null
+
+  # Other possible session artifacts (intentionally not deleted because
+  # they are normally not produced for a single-shot prompt):
+  # - "$root/part/msg_<id>/..." (parts keyed by message id, not session id)
+  # - "$root/project/..." (project metadata)
+  # We keep deletion conservative until we fully understand opencode's storage.
+
+  command rm -f -- "$root/session_share/$session_id.json" 2>/dev/null
+  command rm -f -- "$root/todo/$session_id.json" 2>/dev/null
+
   return 0
 }
 

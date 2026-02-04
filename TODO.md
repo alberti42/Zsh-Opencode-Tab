@@ -26,6 +26,6 @@ This file tracks remaining work items. It is intentionally short and technical.
 - [x] Explain mode:
   - [x] `#? <question><TAB>` prints to scrollback and returns a fresh prompt.
 - [x] Cancellation: `Ctrl-C` interrupts the worker cleanly.
-- [ ] Session deletion:
-  - [ ] With `Z_OC_TAB_OPENCODE_DELETE_SESSION=1` and `Z_OC_TAB_OPENCODE_BACKEND_URL` set, sessions are deleted.
+- [x] Session deletion:
+  - [x] With `Z_OC_TAB_OPENCODE_DELETE_SESSION=1` and `Z_OC_TAB_OPENCODE_BACKEND_URL` set, sessions are deleted.
   - [x] If deletion is enabled but backend URL is empty, a clear warning is shown.
