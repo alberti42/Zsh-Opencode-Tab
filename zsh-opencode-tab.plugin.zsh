@@ -107,8 +107,13 @@ _zsh_opencode_tab[persist.default]=${Z_OC_TAB_PERSIST_DEFAULT:-1}
 () {
   emulate -L zsh
 
-  # We attach to a running server to avoid cold-start overhead.
-  _zsh_opencode_tab[opencode.attach]=${Z_OC_TAB_OPENCODE_ATTACH:-''}
+  # Backend server URL (optional): used for session deletion and attach-mode runs.
+  _zsh_opencode_tab[opencode.backend_url]=${Z_OC_TAB_OPENCODE_BACKEND_URL:-''}
+
+  # How to run opencode:
+  # - cold (default): run `opencode run ...` (no server attach)
+  # - attach: run `opencode run --attach <backend_url> ...`
+  _zsh_opencode_tab[opencode.run_mode]=${Z_OC_TAB_OPENCODE_RUN_MODE:-'cold'}
 
   # Optional. Format: provider/model
   #

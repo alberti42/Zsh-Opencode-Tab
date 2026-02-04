@@ -35,6 +35,13 @@ _zsh_opencode_tab.run_with_spinner() {
 
   # Return immediately if the buffer was empty
   [[ -n $cmdline ]] || return 0
+
+  # If session deletion is enabled, we need a backend server URL.
+  # In cold mode we still run the request locally, but deletion happens via the
+  # server HTTP API. Failing silently here is confusing, so warn.
+  if (( ${_zsh_opencode_tab[opencode.delete_session]} )) && [[ -z ${_zsh_opencode_tab[opencode.backend_url]} ]]; then
+    zle -M "zsh-opencode-tab: delete-session is enabled, but Z_OC_TAB_OPENCODE_BACKEND_URL is empty (sessions cannot be deleted without connection to the backend server)"
+  fi
   
   local _spinner_interval _spinner_render_mode _spinner_message _spinner_type
   local -a _spinner_frames
@@ -176,7 +183,8 @@ _zsh_opencode_tab.run_with_spinner() {
           --kind "$kind" \
           --echo-prompt "$echo_prompt" \
           --config-dir "${_zsh_opencode_tab[opencode.config_dir]}" \
-          --backend "${_zsh_opencode_tab[opencode.attach]}" \
+          --backend-url "${_zsh_opencode_tab[opencode.backend_url]}" \
+          --run-mode "${_zsh_opencode_tab[opencode.run_mode]}" \
           --title "${_zsh_opencode_tab[opencode.title]}" \
           --agent "$agent_to_use"
         )

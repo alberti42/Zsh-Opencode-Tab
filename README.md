@@ -206,11 +206,16 @@ For the best-looking "Knight Rider" fade effect, set the spinner background colo
 # 0: replace the buffer with generated command(s)
 export Z_OC_TAB_PERSIST_DEFAULT='1'
 
-# Optional: attach to a running opencode server (warm-start)
-# NOTE: upstream currently does not support using --attach and --agent together.
-# Track: https://github.com/anomalyco/opencode/pull/11812
-# Until that is fixed, keep this empty (default) or you may not be able to select the agent.
-export Z_OC_TAB_OPENCODE_ATTACH=''
+# Backend server URL (optional).
+# Used for:
+# - attach mode (warm-start), if you want it
+# - deleting sessions when Z_OC_TAB_OPENCODE_DELETE_SESSION=1
+export Z_OC_TAB_OPENCODE_BACKEND_URL=''
+
+# How to run opencode:
+# - cold (default): run `opencode run` locally (most reliable)
+# - attach: run against the backend server (faster if your server is warm)
+export Z_OC_TAB_OPENCODE_RUN_MODE='cold'
 
 # Debug: bypass opencode and return a dummy reply immediately.
 # Useful to iterate on UI/integration without making remote calls.
@@ -293,8 +298,12 @@ The plugin reads these environment variables at load time:
 
 #### Opencode
 
-- `Z_OC_TAB_OPENCODE_ATTACH` (default: empty)
-  - Attach to an existing server (warm-start). See notes below.
+ - `Z_OC_TAB_OPENCODE_BACKEND_URL` (default: empty)
+   - URL of your opencode server.
+   - Used for attach mode and for deleting sessions.
+ - `Z_OC_TAB_OPENCODE_RUN_MODE` (default: `cold`)
+   - `cold`: run `opencode run` locally (no server attach).
+   - `attach`: run `opencode run --attach <backend_url>`.
 - `Z_OC_TAB_OPENCODE_MODEL` (default: empty)
   - Model in `provider/model` form.
   - Comprehensive list of providers/models: https://models.dev/
@@ -319,6 +328,7 @@ The plugin reads these environment variables at load time:
   - If set to `1`, passes `--print-logs`.
 - `Z_OC_TAB_OPENCODE_DELETE_SESSION` (default: `1`)
   - If set to `1`, deletes the created session via the server API after receiving the answer.
+  - Requires `Z_OC_TAB_OPENCODE_BACKEND_URL` to be set (otherwise you'll see a warning and sessions will be kept).
 
 - `Z_OC_TAB_OPENCODE_CONFIG_DIR` (default: `${plugin_dir}/opencode`)
   - Where this plugin looks for its agent/prompt files when it runs `opencode` in cold-start mode.
@@ -341,7 +351,7 @@ This plugin bundles two agent definitions (prompt files) for opencode:
 - Custom agents: set `Z_OC_TAB_OPENCODE_AGENT_GENERATOR` and/or `Z_OC_TAB_OPENCODE_AGENT_EXPLAINER`.
 - Custom prompts (cold start): point `Z_OC_TAB_OPENCODE_CONFIG_DIR` at your own opencode config directory and provide `agents/<agent>.md` with your preferred instruction set.
 
-Tip: when you are iterating on the agent prompt, use cold start (leave `Z_OC_TAB_OPENCODE_ATTACH` empty). It's the least confusing setup: you edit a file, reload your shell, and the next TAB uses it.
+Tip: when you are iterating on the agent prompt, use cold start (`Z_OC_TAB_OPENCODE_RUN_MODE=cold`). It's the least confusing setup: you edit a file, reload your shell, and the next TAB uses it.
 
 ## Cold Start vs Attach Mode
 
@@ -366,7 +376,7 @@ Tip: when you are iterating on the agent prompt, use cold start (leave `Z_OC_TAB
   - The plugin only triggers when the line starts with `#`.
 - The spinner runs but the buffer does not change:
   - Ensure `opencode` is in `PATH`.
-  - If using attach mode, ensure the opencode server is running at `Z_OC_TAB_OPENCODE_ATTACH`.
+  - If using attach mode, ensure the opencode server is running at `Z_OC_TAB_OPENCODE_BACKEND_URL`.
   - Temporarily set `Z_OC_TAB_OPENCODE_LOG_LEVEL=DEBUG` and `Z_OC_TAB_OPENCODE_PRINT_LOGS=1`.
 
 ## Credits

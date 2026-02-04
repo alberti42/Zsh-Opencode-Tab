@@ -72,13 +72,13 @@ def _render_prompt(user_request: str, ostype: str, gnu: str, echo_prompt: str) -
     )
 
 
-def _delete_session(backend: str, session_id: str) -> None:
-    backend = (backend or "").strip().rstrip("/")
+def _delete_session(backend_url: str, session_id: str) -> None:
+    backend_url = (backend_url or "").strip().rstrip("/")
     session_id = (session_id or "").strip()
-    if not backend or not session_id:
+    if not backend_url or not session_id:
         return
 
-    url = f"{backend}/session/{session_id}"
+    url = f"{backend_url}/session/{session_id}"
     req = urllib.request.Request(url, method="DELETE")
     try:
         with urllib.request.urlopen(req, timeout=2) as r:
@@ -97,7 +97,8 @@ def main() -> int:
     ap.add_argument("--echo-prompt", default="0")
     ap.add_argument("--config-dir", default="")
     ap.add_argument("--model", default="")
-    ap.add_argument("--backend", default="")
+    ap.add_argument("--backend-url", default="")
+    ap.add_argument("--run-mode", default="cold")
     ap.add_argument("--agent", default="")
     ap.add_argument("--variant", default="")
     ap.add_argument("--title", default="")
@@ -120,6 +121,9 @@ def main() -> int:
         help="Read mock reply text from this file when --debug-dummy is set.",
     )
     args, _ = ap.parse_known_args()
+
+    backend_url = (args.backend_url or "").strip()
+    run_mode = (args.run_mode or "").strip() or "cold"
 
     prompt = _render_prompt(
         args.user_request,
@@ -153,8 +157,8 @@ def main() -> int:
         cmd += ["--log-level", args.log_level]
     if args.model:
         cmd += ["--model", args.model]
-    if args.backend:
-        cmd += ["--attach", args.backend]
+    if run_mode == "attach" and backend_url:
+        cmd += ["--attach", backend_url]
     if args.agent:
         cmd += ["--agent", args.agent]
     if args.variant:
@@ -177,8 +181,8 @@ def main() -> int:
     # If opencode didn't produce JSON events for some reason, fall back.
     text = (combined_text or out).strip()
 
-    if args.delete_session and args.backend and session_id:
-        _delete_session(args.backend, session_id)
+    if args.delete_session and backend_url and session_id:
+        _delete_session(backend_url, session_id)
 
     # Output protocol for the zsh controller:
     # - Always emit: session_id + US + text + "\n"
