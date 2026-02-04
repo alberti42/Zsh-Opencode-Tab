@@ -59,19 +59,19 @@ That means you can do this:
 1) Ask for a rough draft:
 
 ```zsh
-#+ find all .txt files under this folder, one per line<TAB>
+#+ list all .py files under this folder, one per line<TAB>
 ```
 
-2) Refine the request and press TAB again (edit the first line, or add a new line):
+2) Refine the request and press TAB again (you can edit the first line or add a new one at the bottom):
 
 ```zsh
-#+ but exclude files with _test_ in the filename<TAB>
+# but exclude files with _test_ in the filename<TAB>
 ```
 
 3) Add the action you actually want:
 
 ```zsh
-#+ and now show line counts for each file and sort biggest first<TAB>
+# now show line counts for each file and sort biggest first<TAB>
 ```
 
 You can keep iterating until it looks right, then run it.
