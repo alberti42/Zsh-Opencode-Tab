@@ -28,7 +28,7 @@
   done
 }
 
-# Hook function responding to CTRL+I (i.e., TAB key)
+# Hook function responding to the configured trigger key (default: TAB)
 function _zsh_opencode_tab_or_fallback() {
   # Do not add anything that changes zsh options like `emulate -LR zsh`
   # This will certainly break other widgets that are called as
@@ -54,7 +54,7 @@ function _zsh_opencode_tab_or_fallback() {
       _zsh_opencode_tab.run_with_spinner command "$BUFFER"
     fi
   else
-    # Fallback to whatever was originally bound to Tab in the current keymap.
+    # Fallback to whatever was originally bound to the trigger key in the current keymap.
     # Note: $KEYMAP is often "main" (not "emacs"/"viins").
     local km="${KEYMAP:-main}"
     local orig_widget="${_zsh_opencode_tab[orig_widget_$km]}"
@@ -65,10 +65,7 @@ function _zsh_opencode_tab_or_fallback() {
     fi
 
     if [[ -n "$orig_widget" && "$orig_widget" != "_zsh_opencode_tab_or_fallback" ]]; then
-      # zle -M "WIDGET: ${orig_widget}"
-      # zle -M "KEYMAP: ${km}"
-      # which ${orig_widget}
-      # return      
+      # Call the original widget bound to the trigger key
       zle "$orig_widget"
     else
       zle expand-or-complete

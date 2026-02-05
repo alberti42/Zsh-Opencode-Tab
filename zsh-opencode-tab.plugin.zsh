@@ -47,6 +47,12 @@ _zsh_opencode_tab[debug_log]=${Z_OC_TAB_DEBUG_LOG:-'/tmp/zsh-opencode-tab.log'}
 _zsh_opencode_tab[explain.print_cmd]=${Z_OC_TAB_EXPLAIN_PRINT_CMD:-'cat'}
 _zsh_opencode_tab[explain.file]=''
 
+# Trigger key for this plugin (bindkey notation).
+# Default is TAB (^I). If you want to avoid conflicts with other completion
+# plugins that re-bind TAB (e.g. fzf-tab), set Z_OC_TAB_BINDKEY to another key
+# sequence like '^G'.
+_zsh_opencode_tab[bindkey.key]=${Z_OC_TAB_BINDKEY:-'^I'}
+
 # Default behavior for plain `# <request><TAB>`.
 # - 1: persist (keep the request line as a comment above the generated command)
 # - 0: non-persist (replace the buffer with the generated command)
@@ -164,25 +170,32 @@ _zsh_opencode_tab[persist.default]=${Z_OC_TAB_PERSIST_DEFAULT:-1}
   _zsh_opencode_tab[opencode.dummy_text]=${Z_OC_TAB_OPENCODE_DUMMY_TEXT:-''}
 }
 
-# Saves original TAB binding per keymap; binds TAB to _zsh_opencode_tab_or_fallback
+# Saves original binding per keymap; binds trigger key to _zsh_opencode_tab_or_fallback.
 # We don't assume any specific completion plugin; we preserve whatever was bound.
 (){
-  local keymap keymaps binding orig_widget
+  local keymap keymaps binding orig_widget bindkey_key
+  bindkey_key="${_zsh_opencode_tab[bindkey.key]}"
+  if [[ -z "$bindkey_key" ]]; then
+    bindkey_key='^I'
+    _zsh_opencode_tab[bindkey.key]="$bindkey_key"
+  fi
   
   local -a keymaps=(main emacs viins vicmd visual)
 
+  # First pass: snapshot what is currently bound.
+  # This must happen before we bind anything, because some keymaps can share
+  # underlying bindings (so changing one can affect others).
   for keymap in $keymaps; do
-    # Extract any widget already bound to ^I
-    binding=$(bindkey -M "$keymap" '^I' 2>/dev/null) || binding=""
+    binding=$(bindkey -M "$keymap" "$bindkey_key" 2>/dev/null) || binding=""
     orig_widget="${binding##* }"
-    if [[ -n "$binding" && -n "$orig_widget" && "$orig_widget" != "^I" ]]; then
+    if [[ -n "$binding" && -n "$orig_widget" && "$orig_widget" != "$bindkey_key" ]]; then
       _zsh_opencode_tab[orig_widget_$keymap]="$orig_widget"
-    else
-      # Skip it empty otherwise
     fi
+  done
 
-    # Bind to Tab key (main + common editing keymaps)
-    bindkey -M $keymap '^I' _zsh_opencode_tab_or_fallback
+  # Second pass: bind the trigger key in all common keymaps.
+  for keymap in $keymaps; do
+    bindkey -M $keymap "$bindkey_key" _zsh_opencode_tab_or_fallback
   done
 }
 
