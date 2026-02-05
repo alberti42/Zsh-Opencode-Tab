@@ -371,10 +371,14 @@ Tip: when you are iterating on the agent prompt, use cold start (`Z_OC_TAB_OPENC
     - `Z_OC_TAB_OPENCODE_BACKEND_URL='http://127.0.0.1:4096'`
   - The plugin already keeps its two agent files under `${Z_OC_TAB_OPENCODE_WORKDIR}/.opencode/agents/`, and attach mode can use those too.
 
-- Known upstream rough edges (so you're not surprised):
-  - Agent selection in attach mode can be unreliable (`--agent` may be ignored): https://github.com/anomalyco/opencode/pull/11812
-  - Password-protected server is currently buggy upstream: https://github.com/anomalyco/opencode/pull/9095
-  - If either bites you, switch back to cold start.
+> [!WARNING]
+> Known upstream rough edges (so you're not surprised):
+> 
+> - Attach mode may ignore *which helper* you asked for.
+>   - Under the hood, opencode is supposed to honor `--agent shell_cmd_generator` or `--agent shell_cmd_explainer` when you attach to a server.
+>   - Upstream status: broken right now; a fix exists but is not merged yet: https://github.com/anomalyco/opencode/pull/11812
+>   - For now, we recommend using cold start (default).
+> - Password-protected server can be buggy upstream ("Unauthorized" on attach even with the right password): https://github.com/anomalyco/opencode/pull/9095
 
 ## Troubleshooting
 
