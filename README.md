@@ -145,10 +145,12 @@ source "$HOME/local/share/my-zsh-plugins/zsh-opencode-tab/zsh-opencode-tab.plugi
 **zinit:**
 
 ```zsh
-wait'0c' atinit'
-  export Z_OC_TAB_OPENCODE_MODEL="google/gemini-2.5-flash" \
-  Z_OC_TAB_EXPLAIN_PRINT_CMD='bat --plain --color=always --decorations=always --language=markdown --paging=never {}' \
-  $__local_plugin_path/zsh-opencode-tab
+zinit lucid wait depth=1 from'gh' compile for \
+  wait'0c' atinit'export Z_OC_TAB_OPENCODE_MODEL="anthropic/claude-3-5-haiku-latest" \
+    Z_OC_TAB_SPINNER_BG_HEX="#24273A" \
+    Z_OC_TAB_OPENCODE_RUN_MODE="cold" \
+    Z_OC_TAB_EXPLAIN_PRINT_CMD="bat --plain --color=always --decorations=always --language markdown --paging=never {}"' \
+  @alberti42/zsh-opencode-tab
 ```
 
 ## Usage
