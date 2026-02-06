@@ -188,7 +188,7 @@ _zsh_opencode_tab[persist.default]=${Z_OC_TAB_PERSIST_DEFAULT:-1}
   for keymap in $keymaps; do
     binding=$(bindkey -M "$keymap" "$bindkey_key" 2>/dev/null) || binding=""
     orig_widget="${binding##* }"
-    if [[ -n "$binding" && -n "$orig_widget" && "$orig_widget" != "$bindkey_key" ]]; then
+    if [[ -n "$binding" && -n "$orig_widget" && "$orig_widget" != "$bindkey_key" && "$orig_widget" != "_zsh_opencode_tab_or_fallback" ]]; then
       _zsh_opencode_tab[orig_widget_$keymap]="$orig_widget"
     fi
   done
