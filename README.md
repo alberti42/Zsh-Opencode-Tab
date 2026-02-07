@@ -232,19 +232,21 @@ export Z_OC_TAB_SPINNER_INTERVAL='0.03'
 # Message shown after the bar
 export Z_OC_TAB_SPINNER_MESSAGE='Please wait for the agent ...'
 
-# IMPORTANT: set this to your terminal background color.
-# Tip: use a color picker / eyedropper to measure the hex color of your terminal background.
-export Z_OC_TAB_SPINNER_BG_HEX='#24273A'
+# Optional: set a solid background color for the spinner.
+# Leave unset (default) for transparent background (works with any theme).
+# If you want a solid background, set it to your terminal background color:
+# export Z_OC_TAB_SPINNER_BG_HEX='#24273A'
 
 # Explanation mode output command (printed to the terminal).
 # Use '{}' as the placeholder for the temporary file path.
 export Z_OC_TAB_EXPLAIN_PRINT_CMD='bat --plain --color=always --decorations=always --language=markdown --paging=never {}'
 ```
 
-How to pick the right color:
+If you want a solid background color instead of transparent:
 
 - Use any "eyedropper" / color picker tool, click your terminal background, and copy the hex value (like `#1e1e1e`).
 - On macOS, the built-in "Digital Color Meter" app can do this.
+- Then set `Z_OC_TAB_SPINNER_BG_HEX` to that value.
 
 ### Advanced: All Customizable Settings
 
@@ -291,8 +293,8 @@ The plugin reads these environment variables at load time:
 - `Z_OC_TAB_SPINNER_MIN_ALPHA` (default: `0.0`)
   - Minimum fade factor for dots (0..1).
 
-- `Z_OC_TAB_SPINNER_BG_HEX` (default: `#24273A`)
-  - Background used for blending and as the bar background. Set it to your terminal background for best results.
+- `Z_OC_TAB_SPINNER_BG_HEX` (default: transparent)
+  - Background used for blending and as the bar background. Leave empty for transparent background (works with any terminal theme). Set to a hex color (e.g., `#24273A`) if you want a solid background matching your terminal.
 
 - `Z_OC_TAB_SPINNER_INTERVAL` (default: `0.03`)
   - Seconds per frame (single speed knob).

@@ -173,10 +173,18 @@ function _zsh_opencode_tab.spinner.__hex_to_rgb() {
 function _zsh_opencode_tab.spinner.__set_bg() {
   emulate -L zsh
 
-  _zsh_opencode_tab.spinner.__hex_to_rgb ${_zsh_opencode_tab[spinner.bg_hex]}
-  _zsh_opencode_tab[spinner.state.bg_r]=${reply[1]}
-  _zsh_opencode_tab[spinner.state.bg_g]=${reply[2]}
-  _zsh_opencode_tab[spinner.state.bg_b]=${reply[3]}
+  local bg_hex=${_zsh_opencode_tab[spinner.bg_hex]}
+  if [[ -n $bg_hex ]]; then
+    _zsh_opencode_tab.spinner.__hex_to_rgb $bg_hex
+    _zsh_opencode_tab[spinner.state.bg_r]=${reply[1]}
+    _zsh_opencode_tab[spinner.state.bg_g]=${reply[2]}
+    _zsh_opencode_tab[spinner.state.bg_b]=${reply[3]}
+  else
+    # Transparent background - no RGB values needed
+    _zsh_opencode_tab[spinner.state.bg_r]=''
+    _zsh_opencode_tab[spinner.state.bg_g]=''
+    _zsh_opencode_tab[spinner.state.bg_b]=''
+  fi
 }
 
 function _zsh_opencode_tab.spinner.__set_inactive_fg() {
@@ -200,14 +208,20 @@ function _zsh_opencode_tab.spinner.__set_inactive_fg() {
   local -F bg_b=${_zsh_opencode_tab[spinner.state.bg_b]}
   local -F inactive_factor=${_zsh_opencode_tab[spinner.inactive_factor]}
 
-  local -F alpha=$(( inactive_factor * fadeFactor ))
-  local -F inv=$(( 1.0 - alpha ))
-  local -F r=$(( base_r * alpha + bg_r * inv ))
-  local -F g=$(( base_g * alpha + bg_g * inv ))
-  local -F b=$(( base_b * alpha + bg_b * inv ))
+  if [[ -z $bg_r ]]; then
+    # Transparent background - use base color directly
+    _zsh_opencode_tab.spinner.__rgb_to_hex $base_r $base_g $base_b
+    _zsh_opencode_tab[spinner.state.inactive_fg]=$REPLY
+  else
+    local -F alpha=$(( inactive_factor * fadeFactor ))
+    local -F inv=$(( 1.0 - alpha ))
+    local -F r=$(( base_r * alpha + bg_r * inv ))
+    local -F g=$(( base_g * alpha + bg_g * inv ))
+    local -F b=$(( base_b * alpha + bg_b * inv ))
 
-  _zsh_opencode_tab.spinner.__rgb_to_hex $r $g $b
-  _zsh_opencode_tab[spinner.state.inactive_fg]=$REPLY
+    _zsh_opencode_tab.spinner.__rgb_to_hex $r $g $b
+    _zsh_opencode_tab[spinner.state.inactive_fg]=$REPLY
+  fi
 }
 
 function _zsh_opencode_tab.spinner.__derive_trail_palette() {
@@ -268,10 +282,12 @@ function _zsh_opencode_tab.spinner.__derive_trail_palette() {
     (( g > 1.0 )) && g=1.0
     (( b > 1.0 )) && b=1.0
 
-    (( inv = 1.0 - alpha ))
-    (( r = r * alpha + bg_r * inv ))
-    (( g = g * alpha + bg_g * inv ))
-    (( b = b * alpha + bg_b * inv ))
+    if [[ -n $bg_r ]]; then
+      (( inv = 1.0 - alpha ))
+      (( r = r * alpha + bg_r * inv ))
+      (( g = g * alpha + bg_g * inv ))
+      (( b = b * alpha + bg_b * inv ))
+    fi
 
     _zsh_opencode_tab.spinner.__rgb_to_hex $r $g $b
     palette+=($REPLY)
@@ -325,6 +341,12 @@ function _zsh_opencode_tab.spinner.__train_frame() {
   trail_palette=( ${=_zsh_opencode_tab[spinner.state.trail_palette]} )
   local inactive_fg=${_zsh_opencode_tab[spinner.state.inactive_fg]}
 
+  # Build bg suffix (empty for transparent mode)
+  local bg_suffix=""
+  if [[ -n $barBg ]]; then
+    bg_suffix=",bg=${barBg}"
+  fi
+
   # The visible interior is built as plain text first (dots), then some
   # positions are replaced with the active block character.
 
@@ -346,9 +368,9 @@ function _zsh_opencode_tab.spinner.__train_frame() {
 
   # Buffer is: [<viewLen chars>]
   reply=(
-    "0 1 fg=${bracketFg},bg=${barBg}"
-    "$(( viewLen + 1 )) $(( viewLen + 2 )) fg=${bracketFg},bg=${barBg}"
-    "1 $(( viewLen + 1 )) fg=${inactive_fg},bg=${barBg}"
+    "0 1 fg=${bracketFg}${bg_suffix}"
+    "$(( viewLen + 1 )) $(( viewLen + 2 )) fg=${bracketFg}${bg_suffix}"
+    "1 $(( viewLen + 1 )) fg=${inactive_fg}${bg_suffix}"
   )
 
   local -i p
@@ -375,7 +397,7 @@ function _zsh_opencode_tab.spinner.__train_frame() {
     if (( idx >= 0 && idx < trailLen )); then
       local -i viewIdx=$(( p - padL ))
       view[$viewIdx]=${train_char}
-      reply+=( "$viewIdx $(( viewIdx + 1 )) fg=${trail_palette[$(( idx + 1 ))]},bg=${barBg}" )
+      reply+=( "$viewIdx $(( viewIdx + 1 )) fg=${trail_palette[$(( idx + 1 ))]}${bg_suffix}" )
     fi
   done
 
