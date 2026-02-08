@@ -92,9 +92,9 @@ _zsh_opencode_tab[persist.default]=${Z_OC_TAB_PERSIST_DEFAULT:-1}
   _zsh_opencode_tab[spinner.min_alpha]=${Z_OC_TAB_SPINNER_MIN_ALPHA:-0.0}
 
   # Background color used for alpha blending and as the bar's background.
-  # This must match (or be close to) your terminal background if you want the
-  # alpha-like fades to look like the upstream RGBA implementation.
-  _zsh_opencode_tab[spinner.bg_hex]=${Z_OC_TAB_SPINNER_BG_HEX:-'#24273A'}
+  # Leave empty for transparent background (works with any terminal theme).
+  # Set to a hex color (e.g., '#24273A') if you want a solid background.
+  _zsh_opencode_tab[spinner.bg_hex]=${Z_OC_TAB_SPINNER_BG_HEX:-''}
 
   # Timing
   # The single speed knob is the frame interval (seconds per frame).
