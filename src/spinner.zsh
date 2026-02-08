@@ -412,6 +412,89 @@ function _zsh_opencode_tab.spinner.__train_frame() {
   fi
 }
 
+function _zsh_opencode_tab.spinner.__pulse_frame() {
+  emulate -L zsh
+
+  # Brightness pulsing dots animation
+  # All dots same color, but brightness pulses up/down across the bar
+
+  local -i viewLen=$1
+  local -i frameIndex=$2
+
+  local dot_char=${_zsh_opencode_tab[spinner.dot_char]}
+  local barBg=${_zsh_opencode_tab[spinner.bg_hex]}
+  local msg=${_zsh_opencode_tab[spinner.message]}
+  local msgFg=${_zsh_opencode_tab[spinner.message_fg]}
+  local -i barLen=$(( viewLen + 2 ))
+
+  local -F hue=${_zsh_opencode_tab[spinner.hue]}
+  local -F sat=${_zsh_opencode_tab[spinner.saturation]}
+  local -F val=${_zsh_opencode_tab[spinner.value]}
+
+  # Build bg suffix (empty for transparent mode)
+  local bg_suffix=""
+  if [[ -n $barBg ]]; then
+    bg_suffix=",bg=${barBg}"
+  fi
+
+  # Calculate pulse position - moves back and forth
+  local -i pulsePos
+  local -i halfCycle=$(( viewLen * 2 - 2 ))
+  local -i cyclePos=$(( frameIndex % (halfCycle * 2) ))
+  if (( cyclePos < halfCycle )); then
+    pulsePos=$(( cyclePos % viewLen ))
+  else
+    pulsePos=$(( viewLen - 1 - (cyclePos - halfCycle) % viewLen ))
+  fi
+
+  # Build the view with varying brightness
+  local view=""
+  local -a highlights=()
+  local -i i
+  for (( i = 0; i < viewLen; i++ )); do
+    # Distance from pulse center
+    local -i dist=$(( (i - pulsePos) < 0 ? (pulsePos - i) : (i - pulsePos) ))
+    
+    # Brightness decreases with distance (1.0 at center, 0.15 at edges)
+    # More pronounced difference for better visibility
+    local -F brightness
+    if (( dist == 0 )); then
+      brightness=1.0
+    elif (( dist == 1 )); then
+      brightness=0.6
+    elif (( dist == 2 )); then
+      brightness=0.35
+    else
+      brightness=0.15
+    fi
+
+    view+="${dot_char}"
+
+    # Calculate color for this position
+    _zsh_opencode_tab.spinner.__hsv_to_hex $hue $sat $(( val * brightness ))
+    highlights+=( "$(( i + 1 )) $(( i + 2 )) fg=${REPLY}${bg_suffix}" )
+  done
+
+  # Brackets get the full brightness color
+  _zsh_opencode_tab.spinner.__hsv_to_hex $hue $sat $val
+  local bracketFg=$REPLY
+
+  reply=(
+    "0 1 fg=${bracketFg}${bg_suffix}"
+    "$(( viewLen + 1 )) $(( viewLen + 2 )) fg=${bracketFg}${bg_suffix}"
+    "${highlights[@]}"
+  )
+
+  if [[ -n $msg ]]; then
+    REPLY="[${view}] ${msg}"
+    if [[ -n $msgFg ]]; then
+      reply+=( "${barLen} ${#REPLY} fg=${msgFg}" )
+    fi
+  else
+    REPLY="[${view}]"
+  fi
+}
+
 _zsh_opencode_tab.spinner.init() {
   emulate -L zsh
 
@@ -500,10 +583,20 @@ _zsh_opencode_tab.spinner.draw_frame() {
       fadeFactor=$(( min_alpha2 + progress * (1.0 - min_alpha2) ))
     fi
   fi
-  _zsh_opencode_tab.spinner.__set_inactive_fg $fadeFactor
 
-  # Build and render.
-  _zsh_opencode_tab.spinner.__train_frame $padL $padR $trailLen $viewLen $activePos $dir $isHolding $holdProgress
+  # Build and render based on whether background is set.
+  # If bg_hex is set: use train style with color blending
+  # If bg_hex is empty (transparent): use pulse style
+  local bg_hex=${_zsh_opencode_tab[spinner.bg_hex]}
+  if [[ -n $bg_hex ]]; then
+    _zsh_opencode_tab.spinner.__set_inactive_fg $fadeFactor
+    _zsh_opencode_tab.spinner.__train_frame $padL $padR $trailLen $viewLen $activePos $dir $isHolding $holdProgress
+  else
+    # Use pulse animation for transparent background
+    local -i pulseFrame=$(( frameCount % (viewLen * 4 - 4) ))
+    _zsh_opencode_tab.spinner.__pulse_frame $viewLen $pulseFrame
+  fi
+
   BUFFER="$REPLY"
   CURSOR=0
   POSTDISPLAY=""
