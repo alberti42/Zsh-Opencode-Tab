@@ -1,3 +1,4 @@
 *.zwc
 *.pyc
 *.sublime-workspace
+dist/
