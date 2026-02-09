@@ -50,6 +50,7 @@ paths=(
   LICENSE
   zsh-opencode-tab.plugin.zsh
   src
+  zsh-opencode-tab-banner.gif
 )
 
 local p

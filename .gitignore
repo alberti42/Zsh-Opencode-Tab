@@ -1,4 +1,5 @@
 *.zwc
 *.pyc
 *.sublime-workspace
+*.md
 dist/
