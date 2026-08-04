@@ -188,7 +188,7 @@ def main() -> int:
     if args.log_level:
         cmd += ["--log-level", args.log_level]
     if args.model:
-        cmd += ["--model", args.model]
+        cmd += ["--model", args.model.strip()]
     if run_mode == "attach" and backend_url:
         cmd += ["--attach", backend_url]
     if args.agent:
