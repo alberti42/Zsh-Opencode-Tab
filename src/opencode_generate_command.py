@@ -92,18 +92,24 @@ def _describe_error_event(evt: dict) -> str:
     return "opencode reported an unspecified error"
 
 
-def _parse_json_events(text: str) -> tuple[str, str, str]:
+def _parse_json_events(text: str) -> tuple[str, str, str, int]:
     """Parse `opencode run --format json` newline-delimited JSON events.
 
-    Returns: (combined_text, session_id, error_message)
+    Returns: (combined_text, session_id, error_message, event_count)
 
     `error_message` is non-empty when opencode reported a failure, e.g.
     {"type":"error", ..., "error":{"name":"UnknownError",
      "data":{"message":"Model not found: ..."}}}
+
+    `event_count` tells the caller whether this even *looked* like an event
+    stream, so it can tell "opencode emitted no JSON" (fall back to raw stdout)
+    apart from "opencode emitted events but no assistant text" (an empty reply,
+    which must be reported rather than pasted to the command line).
     """
     chunks: list[str] = []
     session_id = ""
     error_message = ""
+    event_count = 0
 
     for raw_line in text.splitlines():
         line = raw_line.strip()
@@ -116,6 +122,8 @@ def _parse_json_events(text: str) -> tuple[str, str, str]:
 
         if not isinstance(evt, dict):
             continue
+
+        event_count += 1
 
         sid = evt.get("sessionID")
         if isinstance(sid, str) and sid:
@@ -138,7 +146,7 @@ def _parse_json_events(text: str) -> tuple[str, str, str]:
         if isinstance(t, str) and t:
             chunks.append(t)
 
-    return ("".join(chunks), session_id, error_message)
+    return ("".join(chunks), session_id, error_message, event_count)
 
 
 def _render_prompt(user_request: str, ostype: str, gnu: str, echo_prompt: str) -> str:
@@ -272,7 +280,7 @@ def main() -> int:
     out = ANSI_RE.sub("", out or "").replace("\r", "")
     err = ANSI_RE.sub("", err or "").replace("\r", "")
 
-    combined_text, session_id, error_message = _parse_json_events(out)
+    combined_text, session_id, error_message, event_count = _parse_json_events(out)
 
     if args.delete_session and backend_url and session_id:
         _delete_session(backend_url, session_id)
@@ -299,8 +307,25 @@ def main() -> int:
             sys.stderr.write("opencode stdout:\n" + out.strip() + "\n")
         return 1
 
-    # If opencode didn't produce JSON events for some reason, fall back.
-    text = (combined_text or out).strip()
+    text = combined_text.strip()
+
+    # Only fall back to raw stdout when opencode produced no JSON events at all
+    # (e.g. it ignored --format json). Falling back whenever the text is empty
+    # would paste the NDJSON event stream onto the user's command line, which is
+    # what happens when a model streams a reply that carries no text part.
+    if not text and not event_count:
+        text = out.strip()
+
+    # A successful run that produced nothing usable is still a failure from the
+    # caller's point of view: say so instead of inserting an empty reply.
+    if not text:
+        sys.stderr.write("opencode returned no output (empty reply)\n")
+        sys.stderr.write("repro_cmd:\n" + repro_cmd + "\n")
+        if err.strip():
+            sys.stderr.write("opencode stderr:\n" + err.strip() + "\n")
+        if out.strip():
+            sys.stderr.write("opencode stdout:\n" + out.strip() + "\n")
+        return 1
 
     # Output protocol for the zsh controller:
     # - Always emit: session_id + US + repro_cmd + US + text + "\n"
