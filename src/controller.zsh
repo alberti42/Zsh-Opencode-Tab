@@ -30,6 +30,54 @@ _zsh_opencode_tab.debug_log() {
   } >>| "${_zsh_opencode_tab[debug_log]}" 2>/dev/null
 }
 
+# Probe whether an attach-mode backend is actually accepting connections.
+#
+# Without this, a configured-but-dead backend makes every request fail with an
+# opaque "Error: Session not found" from opencode, which gives no hint that the
+# server simply is not running.
+#
+# - $1: backend URL (e.g. http://localhost:4096)
+#
+# Returns 0 when the server answers (or when we cannot probe at all, so that a
+# failed probe never disables a working setup), 1 when the connection is refused.
+_zsh_opencode_tab.backend_reachable() {
+  emulate -L zsh
+  setopt localoptions no_aliases
+
+  local url=${1:-}
+  [[ -n $url ]] || return 1
+
+  # Prefer curl: it bounds the wait, so an unreachable *remote* host cannot
+  # stall the keystroke. Any HTTP reply (even 404) proves the server is up;
+  # only "couldn't connect" (7) and "timed out" (28) mean unreachable.
+  if (( $+commands[curl] )); then
+    local -i rc
+    command curl -s -o /dev/null --connect-timeout 1 --max-time 2 -- "$url" 2>/dev/null
+    rc=$?
+    (( rc != 7 && rc != 28 ))
+    return $?
+  fi
+
+  # Fallback: zsh's own TCP module, so we take on no hard dependency.
+  zmodload -F zsh/net/tcp b:ztcp 2>/dev/null || return 0
+
+  local rest host port
+  rest=${url#*://}
+  rest=${rest%%/*}
+  host=${rest%%:*}
+  port=${rest##*:}
+  if [[ $port == "$rest" || -z $port ]]; then
+    [[ $url == https://* ]] && port=443 || port=80
+  fi
+  [[ -n $host ]] || return 0
+
+  if ztcp "$host" "$port" 2>/dev/null; then
+    ztcp -c "$REPLY" 2>/dev/null
+    return 0
+  fi
+  return 1
+}
+
 _zsh_opencode_tab.run_with_spinner() {
   emulate -L zsh
   setopt localoptions localtraps no_notify extendedglob
@@ -48,11 +96,17 @@ _zsh_opencode_tab.run_with_spinner() {
   local run_mode=${_zsh_opencode_tab[opencode.run_mode]}
   local backend_url=${_zsh_opencode_tab[opencode.backend_url]}
 
-  # If attach mode is requested but no backend URL is configured, fall back to
-  # cold mode (and warn loudly so it's not a silent behavior change).
-  if [[ "$run_mode" == "attach" ]] && [[ -z $backend_url ]]; then
-    zle -M "zsh-opencode-tab: attach mode requested, but Z_OC_TAB_OPENCODE_BACKEND_URL is empty (falling back to cold mode)"
-    run_mode=cold
+  # If attach mode is requested but unusable, fall back to cold mode (and warn
+  # loudly so it's not a silent behavior change). Two ways it can be unusable:
+  # no URL configured at all, or a URL pointing at a server that is not running.
+  if [[ "$run_mode" == "attach" ]]; then
+    if [[ -z $backend_url ]]; then
+      zle -M "zsh-opencode-tab: attach mode requested, but Z_OC_TAB_OPENCODE_BACKEND_URL is empty (falling back to cold mode)"
+      run_mode=cold
+    elif ! _zsh_opencode_tab.backend_reachable "$backend_url"; then
+      zle -M "zsh-opencode-tab: no opencode server at $backend_url (falling back to cold mode; start one with: opencode serve --port ${backend_url##*:})"
+      run_mode=cold
+    fi
   fi
 
   # Prepare a short hint for error messages.
