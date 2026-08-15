@@ -379,8 +379,8 @@ The plugin reads these environment variables at load time:
   - If set to `1`, passes `--print-logs`.
 - `Z_OC_TAB_OPENCODE_DELETE_SESSION` (default: `1`)
   - If set to `1`, deletes the created session after receiving the answer.
-  - In `attach` mode: deletes via the server API (requires `Z_OC_TAB_OPENCODE_BACKEND_URL`).
-  - In `cold` mode: deletes locally on disk (no server needed).
+  - In `attach` mode: deletes via the server API (requires `Z_OC_TAB_OPENCODE_BACKEND_URL`), which costs no extra process because the server is already running.
+  - In `cold` mode: deletes by running `opencode session delete` (no server needed).
 
 - `Z_OC_TAB_OPENCODE_GNU` (`0` or `1`; default: `1`)
   - Passed to the agent whether to prefer GNU tools over macOS/freeBSD.
@@ -415,7 +415,12 @@ Tip: when you are iterating on the agent prompt, use cold start (`Z_OC_TAB_OPENC
 
 > [!WARNING]
 > Known upstream rough edges (so you're not surprised):
-> 
+>
+> - Attach mode may return **no answer for some models**.
+>   - Attach does work: `openai/gpt-5.4-mini-fast`, for instance, answers normally over a warm server. But some models return nothing on every request, and others are intermittent — the same model can succeed and then fail minutes later against the same server.
+>   - When it happens, the server runs the request correctly and stores the reply, but the attached client receives no text and exits successfully, so the plugin reports `opencode returned no output (empty reply)`.
+>   - Observed on opencode 1.18.18. We have not found the root cause, and the evidence points at opencode rather than at this plugin: the same request in cold start always works, and the answer that never reaches the client can be found afterwards in opencode's own session storage.
+>   - If you hit it, try another model before giving up on attach mode; cold start (the default) is unaffected.
 > - Attach mode may ignore *which helper* you asked for.
 >   - Under the hood, opencode is supposed to honor `--agent shell_cmd_generator` or `--agent shell_cmd_explainer` when you attach to a server.
 >   - Upstream status: broken right now; a fix exists but is not merged yet: https://github.com/anomalyco/opencode/pull/11812
