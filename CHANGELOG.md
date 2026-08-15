@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Z_OC_TAB_BINDKEY` to bind the plugin to a key other than <kbd>TAB</kbd>
   (for example `^G`), avoiding conflicts with completion plugins that re-bind
   <kbd>TAB</kbd>.
+- `Z_OC_TAB_OPENCODE_VARIANT_GENERATOR` and `Z_OC_TAB_OPENCODE_VARIANT_EXPLAINER`
+  to set the model variant (provider-specific reasoning effort) per mode, the
+  way the model is already configurable per mode. Generation emits a single
+  shell command and is dominated by the thinking phase, so it benefits from a
+  low effort such as `minimal`, while explanations can afford more.
 
 ### Changed
 
@@ -24,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   requests more reliably.
 - Updated the zinit installation instructions.
 - The release archive now ships the banner image referenced by the README.
+
+### Deprecated
+
+- `Z_OC_TAB_OPENCODE_VARIANT`, in favour of `Z_OC_TAB_OPENCODE_VARIANT_GENERATOR`
+  and `Z_OC_TAB_OPENCODE_VARIANT_EXPLAINER`. It still works and still sets both
+  modes; a per-mode variable takes precedence over it.
 
 ### Fixed
 

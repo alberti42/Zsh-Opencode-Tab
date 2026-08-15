@@ -149,7 +149,21 @@ _zsh_opencode_tab[persist.default]=${Z_OC_TAB_PERSIST_DEFAULT:-1}
   #   ${Z_OC_TAB_OPENCODE_WORKDIR:-$default_workdir}/.opencode/agents/
   _zsh_opencode_tab[opencode.agent.generator]=${Z_OC_TAB_OPENCODE_AGENT_GENERATOR:-'shell_cmd_generator'}
   _zsh_opencode_tab[opencode.agent.explainer]=${Z_OC_TAB_OPENCODE_AGENT_EXPLAINER:-'shell_cmd_explainer'}
+
+  # Model variant (provider-specific reasoning effort, e.g. minimal/high/max),
+  # resolved like the model: a shared default plus per-mode overrides.
+  # - Z_OC_TAB_OPENCODE_VARIANT: sets both (deprecated, kept for compatibility)
+  # - Z_OC_TAB_OPENCODE_VARIANT_GENERATOR: overrides generator only
+  # - Z_OC_TAB_OPENCODE_VARIANT_EXPLAINER: overrides explainer only
+  #
+  # The two modes want different effort: the generator emits a single shell
+  # command and is dominated by the reasoning phase, while the explainer writes
+  # prose and can afford more. Prefer the per-mode variables.
   _zsh_opencode_tab[opencode.variant]=${Z_OC_TAB_OPENCODE_VARIANT:-''}
+  _zsh_opencode_tab[opencode.variant.generator]=${Z_OC_TAB_OPENCODE_VARIANT:-''}
+  _zsh_opencode_tab[opencode.variant.explainer]=${Z_OC_TAB_OPENCODE_VARIANT:-''}
+  [[ -n ${Z_OC_TAB_OPENCODE_VARIANT_GENERATOR:-''} ]] && _zsh_opencode_tab[opencode.variant.generator]=${Z_OC_TAB_OPENCODE_VARIANT_GENERATOR}
+  [[ -n ${Z_OC_TAB_OPENCODE_VARIANT_EXPLAINER:-''} ]] && _zsh_opencode_tab[opencode.variant.explainer]=${Z_OC_TAB_OPENCODE_VARIANT_EXPLAINER}
 
   # "GNU" is passed as opaque config to the agent (no validation/clamping here).
   # Valid values are conventionally 0/1, but we trust user configuration.
@@ -192,6 +206,8 @@ _zsh_opencode_tab[persist.default]=${Z_OC_TAB_PERSIST_DEFAULT:-1}
     opencode.agent.generator \
     opencode.agent.explainer \
     opencode.variant \
+    opencode.variant.generator \
+    opencode.variant.explainer \
     opencode.log_level \
     opencode.title
   do

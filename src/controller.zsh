@@ -252,16 +252,18 @@ _zsh_opencode_tab.run_with_spinner() {
         command cp -f -- "${_zsh_opencode_tab[dir]}/opencode/agents/shell_cmd_generator.md" "$agents_dst/shell_cmd_generator.md"
         command cp -f -- "${_zsh_opencode_tab[dir]}/opencode/agents/shell_cmd_explainer.md" "$agents_dst/shell_cmd_explainer.md"
 
-        # Select agent/model based on request kind.
+        # Select agent/model/variant based on request kind.
         # - command/persist: generator
         # - explain: explainer
-        local agent_to_use model_to_use
+        local agent_to_use model_to_use variant_to_use
         if [[ "$kind" == "explain" ]]; then
           agent_to_use=${_zsh_opencode_tab[opencode.agent.explainer]}
           model_to_use=${_zsh_opencode_tab[opencode.model.explainer]}
+          variant_to_use=${_zsh_opencode_tab[opencode.variant.explainer]}
         else
           agent_to_use=${_zsh_opencode_tab[opencode.agent.generator]}
           model_to_use=${_zsh_opencode_tab[opencode.model.generator]}
+          variant_to_use=${_zsh_opencode_tab[opencode.variant.generator]}
         fi
 
         local -a cmd
@@ -279,7 +281,7 @@ _zsh_opencode_tab.run_with_spinner() {
         )
 
         [[ -n $model_to_use ]] && cmd+=(--model "$model_to_use")
-        [[ -n ${_zsh_opencode_tab[opencode.variant]} ]] && cmd+=(--variant "${_zsh_opencode_tab[opencode.variant]}")
+        [[ -n $variant_to_use ]] && cmd+=(--variant "$variant_to_use")
         [[ -n ${_zsh_opencode_tab[opencode.log_level]} ]] && cmd+=(--log-level "${_zsh_opencode_tab[opencode.log_level]}")
         (( ${_zsh_opencode_tab[opencode.print_logs]} )) && cmd+=(--print-logs)
         if (( ${_zsh_opencode_tab[opencode.delete_session]} )); then

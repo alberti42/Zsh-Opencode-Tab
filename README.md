@@ -358,8 +358,17 @@ The plugin reads these environment variables at load time:
   - Agent name for command generation.
 - `Z_OC_TAB_OPENCODE_AGENT_EXPLAINER` (default: `shell_cmd_explainer`)
   - Agent name for explanation mode.
+- `Z_OC_TAB_OPENCODE_VARIANT_GENERATOR` (default: empty)
+  - Optional model variant for command generation, passed to opencode as `--variant`.
+  - A variant is the provider-specific reasoning effort, e.g. `minimal`, `high`, `max`. The accepted values depend on the provider; the value is forwarded unchanged.
+  - Generation emits a single shell command, and on a reasoning model the thinking phase dominates the response time. `minimal` is usually the right choice here.
+- `Z_OC_TAB_OPENCODE_VARIANT_EXPLAINER` (default: empty)
+  - Optional model variant for explanation mode.
+  - Explanations are prose rather than one command, so a higher effort is easier to justify than it is for generation.
 - `Z_OC_TAB_OPENCODE_VARIANT` (default: empty)
-  - Optional model variant.
+  - **Deprecated.** Sets the variant for both generation and explanation.
+  - Kept for backwards compatibility. Prefer `Z_OC_TAB_OPENCODE_VARIANT_GENERATOR` and `Z_OC_TAB_OPENCODE_VARIANT_EXPLAINER`, which let you spend reasoning effort where it pays off instead of applying one setting to two modes with different needs.
+  - When set together with a per-mode variable, the per-mode variable wins.
 - `Z_OC_TAB_OPENCODE_TITLE` (default: `zsh shell assistant`)
   - Session title.
 
