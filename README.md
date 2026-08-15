@@ -421,11 +421,13 @@ Tip: when you are iterating on the agent prompt, use cold start (`Z_OC_TAB_OPENC
 >   - When it happens, the server runs the request correctly and stores the reply, but the attached client receives no text and exits successfully, so the plugin reports `opencode returned no output (empty reply)`.
 >   - Observed on opencode 1.18.18. We have not found the root cause, and the evidence points at opencode rather than at this plugin: the same request in cold start always works, and the answer that never reaches the client can be found afterwards in opencode's own session storage.
 >   - If you hit it, try another model before giving up on attach mode; cold start (the default) is unaffected.
-> - Attach mode may ignore *which helper* you asked for.
->   - Under the hood, opencode is supposed to honor `--agent shell_cmd_generator` or `--agent shell_cmd_explainer` when you attach to a server.
->   - Upstream status: broken right now; a fix exists but is not merged yet: https://github.com/anomalyco/opencode/pull/11812
->   - For now, we recommend using cold start (default).
-> - Password-protected server can be buggy upstream ("Unauthorized" on attach even with the right password): https://github.com/anomalyco/opencode/pull/9095
+>
+> Two earlier attach-mode problems are now fixed upstream. They are listed here only so that anyone running an older opencode knows what to look for; the fix in both cases is to upgrade.
+>
+> - Attach mode used to ignore *which helper* you asked for, so `--agent shell_cmd_generator` and `--agent shell_cmd_explainer` had no effect over a server.
+>   - Fixed by https://github.com/anomalyco/opencode/pull/11812 (merged 2026-03-03).
+> - A password-protected server used to answer "Unauthorized" on attach even with the right password.
+>   - Fixed by https://github.com/anomalyco/opencode/pull/25596 and https://github.com/anomalyco/opencode/pull/25600 (both merged 2026-05-03).
 
 ## Troubleshooting
 
