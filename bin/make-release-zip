@@ -9,7 +9,7 @@ setopt errexit nounset pipefail
 # - plugin entrypoint
 # - src/ modules
 # - docs/
-# - README + LICENSE
+# - README + CHANGELOG + LICENSE
 # - banner image (README references it)
 
 function _usage() {
@@ -47,6 +47,7 @@ command mkdir -p -- "$stage"
 local -a paths
 paths=(
   README.md
+  CHANGELOG.md
   LICENSE
   zsh-opencode-tab.plugin.zsh
   src
