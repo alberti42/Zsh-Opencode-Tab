@@ -283,9 +283,9 @@ _zsh_opencode_tab.run_with_spinner() {
         [[ -n ${_zsh_opencode_tab[opencode.log_level]} ]] && cmd+=(--log-level "${_zsh_opencode_tab[opencode.log_level]}")
         (( ${_zsh_opencode_tab[opencode.print_logs]} )) && cmd+=(--print-logs)
         if (( ${_zsh_opencode_tab[opencode.delete_session]} )); then
-          # Deletion strategy:
-          # - attach: opencode server owns sessions; worker calls the HTTP API.
-          # - cold: controller deletes local files after parsing session_id.
+          # Deletion strategy (kept split to avoid a needless process spawn):
+          # - attach: a server is already up; the worker deletes over HTTP.
+          # - cold: no server, so the controller runs `opencode session delete`.
           [[ "$worker_run_mode" == "attach" && -n ${_zsh_opencode_tab[opencode.backend_url]} ]] && cmd+=(--delete-session)
         fi
         (( ${_zsh_opencode_tab[opencode.dummy]} )) && cmd+=(--debug-dummy)
@@ -458,9 +458,9 @@ _zsh_opencode_tab.run_with_spinner() {
     "agent_reply:" \
     "$agent_reply"
 
-  # Cold-mode session deletion: delete local files (no server needed).
+  # Cold-mode session deletion: no server to ask, so drive the opencode CLI.
   if (( ${_zsh_opencode_tab[opencode.delete_session]} )) && [[ "$run_mode" == "cold" ]] && [[ -n $session_id ]]; then
-    _zsh_opencode_tab.delete_session_local "$session_id" "$dbg_hint"
+    _zsh_opencode_tab.delete_session_cli "$session_id" "$dbg_hint"
   fi
   
   # Empty output means we have nothing meaningful to insert.
@@ -590,7 +590,18 @@ _zsh_opencode_tab.run_with_spinner() {
   return 0
 }
 
-_zsh_opencode_tab.delete_session_local() {
+# Delete a disposable session in cold mode, where there is no server to ask.
+#
+# opencode owns its storage and moved it to SQLite, so the session artifacts can
+# no longer be removed by deleting files; `opencode session delete` is the
+# supported entry point and cascades to the session's messages and parts.
+#
+# `command` is deliberate: it must not pick up a user's `opencode` shell function
+# (a wrapper doing tty work would run inside the ZLE widget).
+#
+# - $1: session id
+# - $2: debug hint appended to failure messages
+_zsh_opencode_tab.delete_session_cli() {
   emulate -L zsh
   setopt localoptions extendedglob
 
@@ -600,35 +611,25 @@ _zsh_opencode_tab.delete_session_local() {
   session_id=${session_id##[[:space:]]#}
   session_id=${session_id%%[[:space:]]#}
 
-  # Basic sanity guard: avoid path injection.
+  # Basic sanity guard: only ever hand a well-formed id to the CLI.
   if [[ -z $session_id || $session_id != ses_* || $session_id == */* ]]; then
     zle -M "zsh-opencode-tab: cold delete failed (invalid session id: ${session_id:-<empty>})"
     return 1
   fi
 
-  local data_home=${XDG_DATA_HOME:-"$HOME/.local/share"}
-  local root="$data_home/opencode/storage"
-  local session_file="$root/session/global/$session_id.json"
-
-  if [[ ! -f $session_file ]]; then
-    local msg="zsh-opencode-tab: cold delete failed (cannot find session file for $session_id)"
+  # Synchronous on purpose: the call is sub-second because it does not boot a
+  # full session. If that ever changes, move it to a background job.
+  local out
+  if ! out=$(command opencode session delete "$session_id" 2>&1); then
+    local msg="zsh-opencode-tab: cold delete failed for $session_id"
     [[ -n $dbg_hint ]] && msg+="; $dbg_hint"
     zle -M "$msg"
+    _zsh_opencode_tab.debug_log "cold delete failed" \
+      "session_id=$session_id" \
+      "output:" \
+      "$out"
     return 1
   fi
-
-  command rm -rf -- "$root/message/$session_id" 2>/dev/null
-  command rm -f -- "$session_file" 2>/dev/null
-  command rm -f -- "$root/session_diff/$session_id.json" 2>/dev/null
-
-  # Other possible session artifacts (intentionally not deleted because
-  # they are normally not produced for a single-shot prompt):
-  # - "$root/part/msg_<id>/..." (parts keyed by message id, not session id)
-  # - "$root/project/..." (project metadata)
-  # We keep deletion conservative until we fully understand opencode's storage.
-
-  command rm -f -- "$root/session_share/$session_id.json" 2>/dev/null
-  command rm -f -- "$root/todo/$session_id.json" 2>/dev/null
 
   return 0
 }
