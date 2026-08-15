@@ -168,6 +168,35 @@ _zsh_opencode_tab[persist.default]=${Z_OC_TAB_PERSIST_DEFAULT:-1}
   # Debug: bypass opencode and return a dummy reply (fast UI iteration).
   _zsh_opencode_tab[opencode.dummy]=${Z_OC_TAB_OPENCODE_DUMMY:-0}
   _zsh_opencode_tab[opencode.dummy_text]=${Z_OC_TAB_OPENCODE_DUMMY_TEXT:-''}
+
+  # Trim the settings that are forwarded to opencode as command-line arguments.
+  #
+  # Surrounding whitespace is never meaningful in these values, and a stray
+  # space (easy to introduce in an `export` line) would otherwise be passed
+  # through verbatim as e.g. `--model 'provider/model '` and rejected as an
+  # unknown model. A value that is only whitespace becomes empty, so the
+  # `[[ -n ... ]]` guards in the controller correctly drop the argument
+  # instead of sending it as an explicit empty string.
+  #
+  # `#` is the extendedglob "zero or more" operator; `emulate -L zsh` above
+  # makes this setopt local to this function.
+  setopt extendedglob
+  local key
+  for key in \
+    opencode.backend_url \
+    opencode.workdir \
+    opencode.run_mode \
+    opencode.model \
+    opencode.model.generator \
+    opencode.model.explainer \
+    opencode.agent.generator \
+    opencode.agent.explainer \
+    opencode.variant \
+    opencode.log_level \
+    opencode.title
+  do
+    _zsh_opencode_tab[$key]=${${_zsh_opencode_tab[$key]##[[:space:]]#}%%[[:space:]]#}
+  done
 }
 
 # Saves original binding per keymap; binds trigger key to _zsh_opencode_tab_or_fallback.

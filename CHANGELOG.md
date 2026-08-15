@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Settings forwarded to opencode as command-line arguments (model, agent,
+  variant, log level, title, backend URL, run mode, workdir) are trimmed of
+  surrounding whitespace, so a stray space in an `export` line is no longer
+  passed through as part of the value. A setting consisting only of whitespace
+  is treated as unset rather than sent as an explicit empty argument.
 - The generator agent prompt (`shell_cmd_generator`) handles comments and user
   requests more reliably.
 - Updated the zinit installation instructions.
