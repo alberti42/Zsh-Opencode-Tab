@@ -28,6 +28,27 @@
   done
 }
 
+# Hand the key press on to whatever was originally bound to the trigger key in
+# the current keymap. Kept free of `emulate`/`setopt` for the same reason as the
+# hook below: it runs inside foreign widgets such as `Aloxaf/fzf-tab`.
+function _zsh_opencode_tab.fallback() {
+  # Note: $KEYMAP is often "main" (not "emacs"/"viins").
+  local km="${KEYMAP:-main}"
+  local orig_widget="${_zsh_opencode_tab[orig_widget_$km]}"
+  if [[ -z "$orig_widget" && "$km" != "main" ]]; then
+    # If orig was empty, but $KEYMAP was not main,
+    # then try again with main
+    orig_widget="${_zsh_opencode_tab[orig_widget_main]}"
+  fi
+
+  if [[ -n "$orig_widget" && "$orig_widget" != "_zsh_opencode_tab_or_fallback" ]]; then
+    # Call the original widget bound to the trigger key
+    zle "$orig_widget"
+  else
+    zle expand-or-complete
+  fi
+}
+
 # Hook function responding to the configured trigger key (default: TAB)
 function _zsh_opencode_tab_or_fallback() {
   # Do not add anything that changes zsh options like `emulate -LR zsh`
@@ -37,6 +58,15 @@ function _zsh_opencode_tab_or_fallback() {
   # So we keep on purpose the logic of `_zsh_opencode_tab_or_fallback`
   # very simple and short, without relying on special zsh options.
   
+  # A bare marker with no request after it is not a request. Hand the key on to
+  # the next handler instead of sending an empty prompt to opencode, so that
+  # e.g. `# ` + TAB still completes as the user would expect.
+  # NOTE: the regex is quoted so `#` is not parsed as a shell comment.
+  if [[ $BUFFER =~ '^[[:space:]]*#[?+-]?[[:space:]]*$' ]]; then
+    _zsh_opencode_tab.fallback
+    return
+  fi
+
   # NOTE: the regex is quoted so `#` is not parsed as a shell comment.
   if [[ $BUFFER =~ '^[[:space:]]*#\?' ]]; then
     _zsh_opencode_tab.run_with_spinner explain "$BUFFER"
@@ -54,21 +84,7 @@ function _zsh_opencode_tab_or_fallback() {
       _zsh_opencode_tab.run_with_spinner command "$BUFFER"
     fi
   else
-    # Fallback to whatever was originally bound to the trigger key in the current keymap.
-    # Note: $KEYMAP is often "main" (not "emacs"/"viins").
-    local km="${KEYMAP:-main}"
-    local orig_widget="${_zsh_opencode_tab[orig_widget_$km]}"
-    if [[ -z "$orig_widget" && "$km" != "main" ]]; then
-      # If orig was empty, but $KEYMAP was not main,
-      # then try again with main
-      orig_widget="${_zsh_opencode_tab[orig_widget_main]}"
-    fi
-
-    if [[ -n "$orig_widget" && "$orig_widget" != "_zsh_opencode_tab_or_fallback" ]]; then
-      # Call the original widget bound to the trigger key
-      zle "$orig_widget"
-    else
-      zle expand-or-complete
-    fi
+    # Not a request at all: hand the key on to the original widget.
+    _zsh_opencode_tab.fallback
   fi
 }

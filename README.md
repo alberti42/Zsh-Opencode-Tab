@@ -192,6 +192,7 @@ Write a request preceded by `#` and press TAB (or your configured key via `Z_OC_
   - `#? <request><TAB>`: explanation mode; prints the explanation to the terminal via `Z_OC_TAB_EXPLAIN_PRINT_CMD` (default: `cat`).
     - It does not insert the explanation into the buffer.
     - If you configure it to use `bat`, make sure `bat` is installed and in `PATH`.
+  - A prefix on its own, with no request after it (`#`, `#?`, `#+`, `#-`, optionally followed by spaces), is not sent anywhere: the key press is handed to whatever was bound to the trigger key before this plugin, so <kbd>TAB</kbd> still completes as usual.
 
 One small convention that makes iteration nice:
 

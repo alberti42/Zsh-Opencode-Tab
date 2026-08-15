@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   requests more reliably.
 - Updated the zinit installation instructions.
 - The release archive now ships the banner image referenced by the README.
+- A magic prefix with no request after it (`#`, `#?`, `#+`, `#-`, optionally
+  followed by whitespace) no longer starts a request. The key press is handed to
+  the widget that was bound to the trigger key before this plugin, so pressing
+  <kbd>TAB</kbd> on a bare `#` completes as usual instead of sending an empty
+  prompt to opencode.
 
 ### Deprecated
 
