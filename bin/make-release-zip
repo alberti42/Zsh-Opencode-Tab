@@ -8,6 +8,7 @@ setopt errexit nounset pipefail
 # The zip contains only the runtime files needed by users:
 # - plugin entrypoint
 # - src/ modules
+# - bundled opencode agents
 # - docs/
 # - README + CHANGELOG + LICENSE
 # - banner image (README references it)
@@ -51,6 +52,7 @@ paths=(
   LICENSE
   zsh-opencode-tab.plugin.zsh
   src
+  opencode
   zsh-opencode-tab-banner.gif
 )
 
