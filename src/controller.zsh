@@ -10,6 +10,26 @@
 # - Update the editor line (BUFFER/POSTDISPLAY) in a tight loop until the
 #   command finishes.
 
+# Append a labelled record to the debug log; no-op unless Z_OC_TAB_DEBUG=1.
+# - $1: record label (appears in the header line)
+# - $@: remaining args are written verbatim, one per line
+_zsh_opencode_tab.debug_log() {
+  (( ${_zsh_opencode_tab[debug]} )) || return 0
+
+  local label=$1
+  shift
+
+  local line
+  {
+    print -r -- "----- zsh-opencode-tab ${label} -----"
+    print -r -- "timestamp=$(date)"
+    for line in "$@"; do
+      print -r -- "$line"
+    done
+    print -r -- "-----"
+  } >>| "${_zsh_opencode_tab[debug_log]}" 2>/dev/null
+}
+
 _zsh_opencode_tab.run_with_spinner() {
   emulate -L zsh
   setopt localoptions localtraps no_notify extendedglob
@@ -305,11 +325,27 @@ _zsh_opencode_tab.run_with_spinner() {
 
   # If cancelled or failed, restore the original line.
   if (( cancelled )) || (( rc != 0 )); then
+    # On failure the worker writes a one-line reason to stderr, followed by the
+    # repro command and the raw opencode output. Both streams are merged into
+    # $out, so read it before it is removed: the first line goes to the ZLE
+    # message area, the whole thing to the debug log.
+    local failure=""
+    if (( ! cancelled )) && [[ -s "$out" ]]; then
+      failure=$(<"$out")
+    fi
+
     BUFFER="$cmdline"
     CURSOR=$cmd_cursor
     POSTDISPLAY=""
     region_highlight=()
     zle -R
+
+    if [[ -n "$failure" ]]; then
+      _zsh_opencode_tab.debug_log "worker failed" "kind=$kind" \
+        "workdir=${_zsh_opencode_tab[opencode.workdir]}" "rc=$rc" "$failure"
+      zle -M "zsh-opencode-tab: ${failure%%$'\n'*} ($dbg_hint)"
+    fi
+
     command rm -f -- "$out" 2>/dev/null
     return $rc
   fi
@@ -341,7 +377,10 @@ _zsh_opencode_tab.run_with_spinner() {
     BUFFER="$cmdline"
     CURSOR=${#BUFFER}
     zle -R
-    
+
+    _zsh_opencode_tab.debug_log "protocol error" "kind=$kind" \
+      "workdir=${_zsh_opencode_tab[opencode.workdir]}" "worker output:" "$output"
+
     # Show the error in the message area.
     zle -M "zsh-opencode-tab: internal protocol error (worker output missing delimiter; $dbg_hint)"
     return 1
@@ -356,21 +395,14 @@ _zsh_opencode_tab.run_with_spinner() {
   repro_cmd=${rest%%"$US"*}
   agent_reply=${rest#*"$US"}
 
-      if (( ${_zsh_opencode_tab[debug]} )); then
-        local dbg_file=${_zsh_opencode_tab[debug_log]}
-        {
-          print -r -- "----- zsh-opencode-tab worker -----"
-          print -r -- "timestamp=$(date)"
-          print -r -- "kind=$kind"
-          print -r -- "workdir=${_zsh_opencode_tab[opencode.workdir]}"
-          print -r -- "session_id=$session_id"
-          print -r -- "repro_cmd:"
-          print -r -- "$repro_cmd"
-          print -r -- "agent_reply:"
-          print -r -- "$agent_reply"
-          print -r -- "-----"
-        } >>| "$dbg_file" 2>/dev/null
-      fi
+  _zsh_opencode_tab.debug_log "worker" \
+    "kind=$kind" \
+    "workdir=${_zsh_opencode_tab[opencode.workdir]}" \
+    "session_id=$session_id" \
+    "repro_cmd:" \
+    "$repro_cmd" \
+    "agent_reply:" \
+    "$agent_reply"
 
   # Cold-mode session deletion: delete local files (no server needed).
   if (( ${_zsh_opencode_tab[opencode.delete_session]} )) && [[ "$run_mode" == "cold" ]] && [[ -n $session_id ]]; then

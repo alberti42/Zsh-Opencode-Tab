@@ -62,13 +62,48 @@ def _build_repro_cmd(cmd: list[str], cwd: str) -> str:
     return prefix + " ".join(parts)
 
 
-def _parse_json_events(text: str) -> tuple[str, str]:
+def _last_nonempty_line(text: str) -> str:
+    """Return the last non-empty line of `text` (used for error messages)."""
+
+    for line in reversed((text or "").splitlines()):
+        line = line.strip()
+        if line:
+            return line
+    return ""
+
+
+def _describe_error_event(evt: dict) -> str:
+    """Extract a human-readable message from an opencode `error` event."""
+
+    err = evt.get("error")
+    if not isinstance(err, dict):
+        return "opencode reported an unspecified error"
+
+    data = err.get("data")
+    if isinstance(data, dict):
+        msg = data.get("message")
+        if isinstance(msg, str) and msg.strip():
+            return msg.strip()
+
+    name = err.get("name")
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+
+    return "opencode reported an unspecified error"
+
+
+def _parse_json_events(text: str) -> tuple[str, str, str]:
     """Parse `opencode run --format json` newline-delimited JSON events.
 
-    Returns: (combined_text, session_id)
+    Returns: (combined_text, session_id, error_message)
+
+    `error_message` is non-empty when opencode reported a failure, e.g.
+    {"type":"error", ..., "error":{"name":"UnknownError",
+     "data":{"message":"Model not found: ..."}}}
     """
     chunks: list[str] = []
     session_id = ""
+    error_message = ""
 
     for raw_line in text.splitlines():
         line = raw_line.strip()
@@ -86,6 +121,12 @@ def _parse_json_events(text: str) -> tuple[str, str]:
         if isinstance(sid, str) and sid:
             session_id = sid
 
+        if evt.get("type") == "error":
+            # Keep the first error; later events are usually fallout from it.
+            if not error_message:
+                error_message = _describe_error_event(evt)
+            continue
+
         if evt.get("type") != "text":
             continue
 
@@ -97,7 +138,7 @@ def _parse_json_events(text: str) -> tuple[str, str]:
         if isinstance(t, str) and t:
             chunks.append(t)
 
-    return ("".join(chunks), session_id)
+    return ("".join(chunks), session_id, error_message)
 
 
 def _render_prompt(user_request: str, ostype: str, gnu: str, echo_prompt: str) -> str:
@@ -225,17 +266,41 @@ def main() -> int:
 
     os.makedirs(workdir, exist_ok=True)
     p = Popen(cmd, stdout=PIPE, stderr=PIPE, text=True, env=env, cwd=workdir)
-    out, _err = p.communicate()
+    out, err = p.communicate()
 
     # ANSI_RE.sub("", out ...): strips ANSI escape sequences
     out = ANSI_RE.sub("", out or "").replace("\r", "")
+    err = ANSI_RE.sub("", err or "").replace("\r", "")
 
-    combined_text, session_id = _parse_json_events(out)
-    # If opencode didn't produce JSON events for some reason, fall back.
-    text = (combined_text or out).strip()
+    combined_text, session_id, error_message = _parse_json_events(out)
 
     if args.delete_session and backend_url and session_id:
         _delete_session(backend_url, session_id)
+
+    # opencode failed: report it on stderr and exit non-zero. Without this the
+    # raw error JSON would flow through the success path below and land in the
+    # user's command line. The controller shows the first line in the ZLE
+    # message area and appends the rest to the debug log.
+    if p.returncode != 0 or error_message:
+        detail = error_message or _last_nonempty_line(err) or _last_nonempty_line(out)
+        # An error event with a zero exit status is a normal opencode outcome,
+        # so only mention the status when it is itself the failure signal.
+        summary = "opencode failed"
+        if p.returncode != 0:
+            summary += f" (exit {p.returncode})"
+        if detail:
+            summary += f": {detail}"
+
+        sys.stderr.write(summary + "\n")
+        sys.stderr.write("repro_cmd:\n" + repro_cmd + "\n")
+        if err.strip():
+            sys.stderr.write("opencode stderr:\n" + err.strip() + "\n")
+        if out.strip():
+            sys.stderr.write("opencode stdout:\n" + out.strip() + "\n")
+        return 1
+
+    # If opencode didn't produce JSON events for some reason, fall back.
+    text = (combined_text or out).strip()
 
     # Output protocol for the zsh controller:
     # - Always emit: session_id + US + repro_cmd + US + text + "\n"
